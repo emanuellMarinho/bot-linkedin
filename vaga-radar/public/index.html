@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0b111b" />
+    <title>Vaga Radar • Seu próximo passo</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Pular para o conteúdo</a>
+    <aside class="sidebar">
+      <a href="#dashboard" class="brand"
+        ><span class="radar" aria-hidden="true">◎</span
+        ><span
+          >vaga<span class="accent">radar</span
+          ><small>SEU PRÓXIMO PASSO</small></span
+        ></a
+      >
+      <span class="nav-label">WORKSPACE PESSOAL</span>
+      <nav aria-label="Navegação principal">
+        <a href="#dashboard" data-nav="dashboard"
+          ><span aria-hidden="true">◫</span> Visão geral</a
+        >
+        <a href="#jobs" data-nav="jobs"
+          ><span aria-hidden="true">⌕</span> Explorar vagas</a
+        >
+        <a href="#applications" data-nav="applications"
+          ><span aria-hidden="true">▤</span> Candidaturas</a
+        >
+        <a href="#import" data-nav="import"
+          ><span aria-hidden="true">＋</span> Importar oportunidade</a
+        >
+        <span class="nav-label">PERSONALIZAR</span>
+        <a href="#profile" data-nav="profile"
+          ><span aria-hidden="true">◉</span> Meu perfil</a
+        >
+        <a href="#settings" data-nav="settings"
+          ><span aria-hidden="true">⚙</span> Fontes e configurações</a
+        >
+      </nav>
+      <div class="sidebar-bottom">
+        <span class="dot"></span> Ambiente local e privado
+        <p>Você escolhe. Você revisa.<br />Você conclui a candidatura.</p>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <span class="dot"></span> Seu radar de oportunidades
+          <span class="local-badge">LOCAL</span>
+        </div>
+        <div class="header-actions">
+          <button
+            class="icon-button"
+            id="theme-button"
+            title="Alternar tema"
+            aria-label="Alternar tema"
+          >
+            ◐</button
+          ><a href="#profile" class="avatar" aria-label="Editar perfil">EU</a>
+        </div>
+      </header>
+      <main id="main" tabindex="-1"></main>
+      <footer>
+        Vaga Radar <span>Menos busca. Mais direção.</span
+        ><small>Dados ausentes são exibidos como não informados.</small>
+      </footer>
+    </div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <dialog id="detail-dialog" aria-labelledby="detail-title">
+      <button class="close" id="close-dialog" aria-label="Fechar detalhes">
+        ×
+      </button>
+      <div id="detail-content"></div>
+    </dialog>
+  </body>
+</html>

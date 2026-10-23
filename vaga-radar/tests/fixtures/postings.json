@@ -1,0 +1,47 @@
+{
+  "greenhouse": {
+    "jobs": [
+      {
+        "id": 101,
+        "title": "Desenvolvedor Node.js Pleno",
+        "content": "<h2>Requisitos</h2><p>Node.js, JavaScript, SQL</p><h2>Diferenciais</h2><p>Docker</p><p>Remoto no Brasil. Contratação CLT.</p>",
+        "absolute_url": "https://boards.greenhouse.io/fixture/jobs/101",
+        "location": { "name": "Brasil — remoto" },
+        "updated_at": "2026-10-20T10:00:00Z"
+      }
+    ]
+  },
+  "lever": [
+    {
+      "id": "lever-101",
+      "text": "Software Developer Junior",
+      "descriptionPlain": "Remote in Brazil.",
+      "lists": [
+        {
+          "text": "Requirements",
+          "content": "<ul><li>JavaScript</li><li>Node.js</li><li>SQL</li></ul>"
+        }
+      ],
+      "categories": { "location": "Brazil", "commitment": "FullTime" },
+      "workplaceType": "remote",
+      "hostedUrl": "https://jobs.lever.co/fixture/lever-101",
+      "applyUrl": "https://jobs.lever.co/fixture/lever-101/apply"
+    }
+  ],
+  "ashby": {
+    "jobs": [
+      {
+        "id": "ashby-101",
+        "title": "Full Stack Developer Pleno",
+        "descriptionPlain": "Requirements\nJavaScript, TypeScript, Node.js\nRemote in Brazil. CLT.",
+        "location": "Brazil",
+        "workplaceType": "Remote",
+        "employmentType": "FullTime",
+        "publishedAt": "2026-10-23T08:00:00Z",
+        "jobUrl": "https://jobs.ashbyhq.com/fixture/ashby-101",
+        "applyUrl": "https://jobs.ashbyhq.com/fixture/ashby-101/application",
+        "isListed": true
+      }
+    ]
+  }
+}
