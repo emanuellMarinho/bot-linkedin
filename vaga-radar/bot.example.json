@@ -1,0 +1,66 @@
+{
+  "dataDir": "./data",
+  "profile": {
+    "name": "",
+    "summary": "",
+    "experiences": [],
+    "seniority": null,
+    "professionalLinks": [],
+    "additional": ""
+  },
+  "applicant": {
+    "email": "",
+    "resumePath": ""
+  },
+  "preferences": {
+    "country": "Brasil",
+    "minScore": 65,
+    "intervalHours": 1
+  },
+  "sources": [
+    {
+      "provider": "greenhouse",
+      "board": "vtex",
+      "company": "VTEX",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "board": "ciandt",
+      "company": "CI&T",
+      "enabled": true
+    },
+    {
+      "provider": "ashby",
+      "board": "ashby",
+      "company": "Ashby",
+      "enabled": true
+    }
+  ],
+  "autoApply": {
+    "enabled": false,
+    "maxPerRun": 1,
+    "maxPerDay": 3,
+    "sources": []
+  },
+  "ai": {
+    "enabled": false,
+    "apiKeyEnv": "VAGA_OPENAI_KEY",
+    "model": "gpt-4.1-mini"
+  },
+  "workWindow": {
+    "enabled": true,
+    "startHour": 8,
+    "hours": 12,
+    "timeZone": "America/Sao_Paulo"
+  },
+  "whatsapp": {
+    "enabled": false,
+    "phoneNumberId": "",
+    "to": "",
+    "accessTokenEnv": "VAGA_WHATSAPP_TOKEN",
+    "templateName": "vaga_radar_duvida",
+    "language": "pt_BR",
+    "apiVersion": "v24.0"
+  }
+}

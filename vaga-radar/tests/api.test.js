@@ -149,7 +149,7 @@ test("persistência de banco, migrations repetíveis e histórico após reabrir"
   const store = createStore(db);
   assert.equal(store.getJob(imported.job.id).status, "prepared");
   assert.ok(store.getApplication(1).events.length >= 3);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM migrations").get().n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM migrations").get().n, 3);
   assert.equal(
     store.getProfile().skills.length,
     0,

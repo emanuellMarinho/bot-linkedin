@@ -5,3 +5,6 @@ data/*
 coverage/
 test-results/
 *.log
+dist/
+bot.config.json
+*.private.json

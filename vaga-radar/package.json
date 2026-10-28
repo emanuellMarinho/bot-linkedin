@@ -1,20 +1,24 @@
 {
   "name": "vaga-radar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Radar local de oportunidades e preparação de candidaturas",
+  "description": "Bot local de vagas, currículos ATS e dúvidas por WhatsApp",
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
-    "start": "node --use-env-proxy src/server.js",
-    "dev": "node --use-env-proxy --watch src/server.js",
+    "bot": "node --use-env-proxy src/bot.js",
+    "bot:watch": "node --use-env-proxy src/bot.js --watch",
+    "build:windows": "node scripts/build-windows.js",
+    "start": "node --use-env-proxy src/bot.js --watch",
+    "dev": "node --use-env-proxy --watch src/bot.js --watch",
     "test": "node --test tests/*.test.js",
     "test:ui": "node scripts/test-ui.js",
     "demo": "node scripts/demo.js",
     "sources:example": "node scripts/configure-sources.js",
-    "collect": "node --use-env-proxy scripts/collect.js"
+    "collect": "node --use-env-proxy scripts/collect.js",
+    "web": "node --use-env-proxy src/server.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
@@ -24,12 +28,15 @@
     "mailparser": "^3.7.5",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
+    "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.17.2",
     "pino": "^10.1.0",
     "sanitize-html": "^2.17.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "playwright-core": "^1.56.1",
+    "postject": "1.0.0-alpha.6",
     "supertest": "^7.1.4"
   }
 }
