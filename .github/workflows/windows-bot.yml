@@ -1,0 +1,65 @@
+name: Windows bot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "vaga-radar/src/**"
+      - "vaga-radar/scripts/**"
+      - "vaga-radar/tests/**"
+      - "vaga-radar/package*.json"
+      - "vaga-radar/bot.example.json"
+      - ".github/workflows/windows-bot.yml"
+  pull_request:
+    paths:
+      - "vaga-radar/**"
+      - ".github/workflows/windows-bot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-executable:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vaga-radar
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: vaga-radar/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run unit and integration tests on Windows
+        run: npm test
+      - name: Build portable executable
+        run: npm run build:windows
+      - name: Smoke test extracted Windows package
+        run: |
+          Expand-Archive -LiteralPath dist/VagaRadar-Windows-x64.zip -DestinationPath dist/smoke
+          $helpText = & ./dist/smoke/VagaRadar/VagaRadar.exe --help
+          if ($LASTEXITCODE -ne 0) { throw 'Windows executable help failed' }
+          if (($helpText -join "`n") -notmatch 'Vaga Radar|VagaRadar|vaga-radar') { throw 'Windows executable help did not run the bot' }
+          $helpText | Write-Output
+          $configFile = Join-Path $PWD 'dist/smoke/VagaRadar/smoke.json'
+          @{ sources = @(); preferences = @{ collectionEnabled = $false }; workWindow = @{ enabled = $false }; dataDir = 'smoke-data' } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configFile -Encoding utf8
+          $before = @(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue).Count
+          & ./dist/smoke/VagaRadar/VagaRadar.exe --config $configFile --once --collect-only
+          if ($LASTEXITCODE -ne 0) { throw 'Windows executable standalone cycle failed' }
+          $reportPath = Join-Path (Split-Path $configFile) 'smoke-data/reports/latest.json'
+          if (-not (Test-Path $reportPath)) { throw 'Standalone cycle did not create report' }
+          $report = Get-Content -Raw $reportPath | ConvertFrom-Json
+          if ($report.collection.status -ne 'paused') { throw 'Standalone cycle did not respect pause' }
+          $after = @(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue).Count
+          if ($after -gt $before) { throw 'Headless bot unexpectedly started a web server' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VagaRadar-Windows-x64
+          path: vaga-radar/dist/VagaRadar-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
