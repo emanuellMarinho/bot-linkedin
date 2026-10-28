@@ -1,6 +1,6 @@
 # Vaga Radar Bot
 
-Bot sem dashboard obrigatório: lê um currículo local, procura vagas em fontes públicas, classifica compatibilidade e gera um currículo PDF/TXT por oportunidade. Trabalha em uma janela diária configurável de **12 horas**, inicialmente **08h–20h, America/Sao_Paulo**, com consultas periódicas (uma hora no exemplo). Dúvidas podem ser encaminhadas ao candidato por WhatsApp. GPT é opcional.
+Bot sem dashboard obrigatório: lê um currículo local, procura vagas em fontes públicas, classifica compatibilidade e gera um currículo PDF/TXT por oportunidade. Trabalha em uma janela diária configurável de **12 horas**, inicialmente **08h–20h, America/Sao_Paulo**, com consultas periódicas (uma hora no exemplo). Dúvidas podem ser respondidas no próprio terminal. O número pessoal do WhatsApp é salvo como destino; o envio por esse canal depende de um remetente já autenticado. GPT é opcional.
 
 **Estado:** execução Node/Linux e integrações com fixtures testáveis. O envio real depende de permissões da plataforma; WhatsApp/GPT dependem de credenciais configuradas. O pacote Windows é gerado e testado pelo workflow Windows, não por uma compilação Linux disfarçada de `.exe`. Não há candidatura automática universal para qualquer site.
 
@@ -8,7 +8,7 @@ Bot sem dashboard obrigatório: lê um currículo local, procura vagas em fontes
 
 Requer Node.js 24 LTS. Linux e Windows são os alvos; Windows usa o pacote portátil ou Node instalado.
 
-Abra **VagaRadar.exe**. No primeiro uso, o terminal pergunta nome, e-mail, currículo, habilidades, número pessoal do WhatsApp, horários e integrações opcionais. As respostas são salvas automaticamente em `bot.config.json`, o currículo é copiado para a pasta privada e a rotina começa na mesma janela. Mantenha o terminal aberto; **Ctrl+C** encerra.
+Abra **VagaRadar.exe**. No primeiro uso, o terminal pergunta nome, e-mail, currículo, habilidades, número pessoal do WhatsApp, horários e integrações opcionais. As respostas são salvas automaticamente em `bot.config.json`, o currículo é copiado para a pasta privada e a rotina começa na mesma janela. O fluxo básico pergunta apenas seu número pessoal, sem QR code, cadastro Business ou credenciais Meta. Mantenha o terminal aberto; **Ctrl+C** encerra.
 
 Para alterar os dados posteriormente:
 
@@ -62,11 +62,19 @@ Informe a chave no assistente do terminal ou defina `VAGA_OPENAI_KEY` no ambient
 
 O modelo propõe ordenação de habilidades já existentes e perguntas sobre dados ausentes. Não recebe autorização para inventar experiência ou responder fatos pessoais pelo candidato. Descrição da vaga é tratada como conteúdo não confiável. Planos válidos são armazenados por currículo/vaga/modelo para não repetir chamadas idênticas. Se a IA estiver desativada ou indisponível, a preparação determinística continua e a limitação aparece no relatório.
 
-## Perguntas e respostas por WhatsApp
+## Dúvidas no terminal e número pessoal
+
+Sem um serviço remetente conectado, o WhatsApp permanece **desativado**, mesmo após informar o número. Só o número de destino não autentica envio de mensagens. O assistente básico não pede QR code nem cadastro Business, conforme a preferência do usuário; não existe uma conexão pessoal ativa por trás desse campo.
+
+As perguntas aparecem na janela do bot. Para responder, digite `ID_DA_PERGUNTA: sua resposta` e pressione Enter. A resposta é validada e salva, e a rotina continua sem precisar fechar o bot ou editar JSON. Mensagens já respondidas não substituem respostas anteriores. Ctrl+C continua encerrando a execução.
+
+## Integração WhatsApp para operador que já tenha remetente
+
+As instruções abaixo são opcionais e não fazem parte do assistente básico. Somente um operador com integração existente precisa de `VagaRadar.exe --advanced-setup` para cadastrar a API oficial. Informar apenas o número pessoal não cria esse serviço.
 
 Seu **número pessoal pode receber** as perguntas e não precisa ser convertido em Business. O remetente do bot, por sua vez, precisa de uma conexão autenticada com o WhatsApp. A integração implementada nesta versão usa a **WhatsApp Business Platform Cloud API oficial**. Não usa automação de WhatsApp pessoal ou WhatsApp Web. Requer conta/app Meta, número Business configurado, token válido, número do candidato e um **template aprovado**. Tarifas/regras dependem da conta Meta. Os testes locais não habilitam o canal real. Cadastro/aprovação de app, template e disponibilidade de HTTPS são etapas da Meta/hospedagem que o executável não pode aprovar por conta própria.
 
-O assistente pergunta seu número pessoal separadamente. Você pode terminar a configuração sem API Business; nesse caso as perguntas ficam pendentes localmente e o WhatsApp não é anunciado como conectado. Informar somente um número não autentica um remetente.
+O assistente básico pergunta seu número pessoal separadamente. Você termina a configuração sem API Business; nesse caso as perguntas ficam pendentes localmente e o WhatsApp não é anunciado como conectado. Informar somente um número não autentica um remetente.
 
 1. Cadastre um template, por exemplo `vaga_radar_duvida`, em `pt_BR`, com exatamente dois parâmetros no corpo: texto da pergunta e ID da pergunta. Exemplo de corpo a submeter à aprovação da Meta:
 

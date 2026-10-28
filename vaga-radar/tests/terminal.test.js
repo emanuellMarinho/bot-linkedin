@@ -10,6 +10,10 @@ import {
   createTerminalPrompt,
 } from "../src/terminal/prompts.js";
 import { PassThrough, Writable } from "node:stream";
+import { startTerminalAnswers } from "../src/terminal/answers.js";
+import { harness } from "./helpers.js";
+import { askQuestion } from "../src/bot/questions.js";
+import { applyLocalCredentials } from "../src/bot/credentials.js";
 
 // Every name, number and key in this file is a synthetic local test fixture.
 // The wizard must not contact messaging, GPT or recruitment services.
@@ -138,6 +142,84 @@ function firstRunAnswers(resume) {
   };
 }
 
+test("assistente básico pede apenas número pessoal, sem QR code ou cadastro Business", async (t) => {
+  const { filename, resume } = workspace(t);
+  const output = [];
+  const prompt = scriptedPrompt(firstRunAnswers(resume), {
+    "ai.enabled": true,
+    "sources.useExamples": true,
+  });
+  await runSetup({
+    filename,
+    prompt,
+    output: (message) => output.push(message),
+  });
+  const config = readBotConfig(filename);
+  assert.equal(config.whatsapp.to, "5511999990000");
+  assert.equal(config.whatsapp.enabled, false);
+  assert.ok(
+    !prompt.calls.some((c) =>
+      [
+        "whatsapp.enabled",
+        "whatsapp.phoneNumberId",
+        "whatsapp.whatsappAccessToken",
+        "whatsapp.metaAppSecret",
+        "whatsapp.webhookUrl",
+        "autoApply.enabled",
+      ].includes(c.id),
+    ),
+  );
+  assert.match(output.join("\n"), /WhatsApp não conectado/);
+  const env = {};
+  applyLocalCredentials(config, env);
+  assert.equal(env.VAGA_OPENAI_KEY, secretFixtures.openaiApiKey);
+  assert.equal(env.VAGA_WHATSAPP_TO, "5511999990000");
+  assert.ok(!output.join("\n").includes(secretFixtures.openaiApiKey));
+});
+
+test("dúvidas podem ser respondidas no terminal sem autenticar WhatsApp ou bloquear o bot", async (t) => {
+  const h = harness();
+  t.after(() => h.close());
+  askQuestion(h.db, {
+    id: "APPLICANT_EMAIL",
+    topic: "email",
+    text: "Qual e-mail?",
+  });
+  const { input, output, chunks } = terminalStreams();
+  let stopped = 0;
+  const reader = startTerminalAnswers(h.db, {
+    input,
+    output,
+    onStop: () => stopped++,
+  });
+  try {
+    input.write("APPLICANT_EMAIL: invalido\r");
+    assert.equal(
+      h.db.prepare("SELECT answer FROM bot_questions").get().answer,
+      null,
+    );
+    input.write("APPLICANT_EMAIL: fixture@example.org\r");
+    assert.equal(
+      h.db.prepare("SELECT answer FROM bot_questions").get().answer,
+      "fixture@example.org",
+    );
+    input.write("APPLICANT_EMAIL: duplicate@example.org\r");
+    assert.equal(
+      h.db.prepare("SELECT COUNT(*) AS n FROM whatsapp_inbound_messages").get()
+        .n,
+      1,
+    );
+    assert.equal(stopped, 0);
+    assert.match(chunks.join(""), /Resposta salva/);
+    input.write("\u0003");
+    assert.equal(stopped, 1);
+  } finally {
+    reader.close();
+    input.destroy();
+    output.destroy();
+  }
+});
+
 test("assistente coleta os dados, copia o currículo e salva JSON privado sem exibir segredos", async (t) => {
   const { directory, filename, resume } = workspace(t);
   const output = [];
@@ -150,6 +232,7 @@ test("assistente coleta os dados, copia o currículo e salva JSON privado sem ex
   await runSetup({
     filename,
     prompt,
+    advanced: true,
     output: (message) => output.push(message),
   });
   const raw = JSON.parse(fs.readFileSync(filename, "utf8"));

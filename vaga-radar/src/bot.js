@@ -16,6 +16,7 @@ export async function main(args = process.argv.slice(2)) {
         "collect-only": { type: "boolean" },
         "whatsapp-webhook": { type: "boolean" },
         setup: { type: "boolean" },
+        "advanced-setup": { type: "boolean" },
       },
     }));
   } catch {
@@ -37,7 +38,8 @@ export async function main(args = process.argv.slice(2)) {
     values.config || path.join(base, "bot.config.json"),
   );
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  let setupNeeded = values.setup || !fs.existsSync(filename);
+  let setupNeeded =
+    values.setup || values["advanced-setup"] || !fs.existsSync(filename);
   if (
     interactive &&
     !values.once &&
@@ -54,7 +56,7 @@ export async function main(args = process.argv.slice(2)) {
       /* O erro de arquivo será apresentado na validação. */
     }
   }
-  if (values.setup && !interactive) {
+  if ((values.setup || values["advanced-setup"]) && !interactive) {
     console.error(
       "O assistente precisa de um terminal interativo. Abra o .exe ou execute --setup no seu terminal.",
     );
@@ -65,7 +67,11 @@ export async function main(args = process.argv.slice(2)) {
     const { runSetup } = await import("./bot/setup.js");
     const prompt = createTerminalPrompt();
     try {
-      await runSetup({ filename, prompt });
+      await runSetup({
+        filename,
+        prompt,
+        advanced: Boolean(values["advanced-setup"]),
+      });
     } catch (error) {
       console.error(
         error.code === "SETUP_CANCELLED"
@@ -138,6 +144,7 @@ export async function main(args = process.argv.slice(2)) {
     timer,
     wake;
   let webhook;
+  let terminalAnswers;
   const stop = () => {
     stopping = true;
     controller.abort();
@@ -174,7 +181,10 @@ export async function main(args = process.argv.slice(2)) {
       console.log(
         `GPT: ${config.ai.enabled ? "configurado" : "desativado"} | WhatsApp: ${config.whatsapp.enabled ? "configurado; depende de webhook/template Meta" : "desativado"}`,
       );
+      const { startTerminalAnswers } = await import("./terminal/answers.js");
+      terminalAnswers = startTerminalAnswers(db, { onStop: stop });
     }
+    const shownQuestions = new Set();
     let lastRun = 0,
       lastConfig = 0,
       lastAnswers = 0,
@@ -208,6 +218,7 @@ export async function main(args = process.argv.slice(2)) {
                 timeZone: config.workWindow.timeZone,
               }),
         );
+
         outsideReported = true;
       }
       if (!within && !values.watch) return 0;
@@ -240,6 +251,21 @@ export async function main(args = process.argv.slice(2)) {
             ? 1
             : 0;
       }
+      if (interactive && !config.whatsapp.enabled) {
+        const pending = db
+          .prepare(
+            "SELECT id,text FROM bot_questions WHERE answer IS NULL ORDER BY created_at LIMIT 5",
+          )
+          .all();
+        for (const question of pending)
+          if (!shownQuestions.has(question.id)) {
+            shownQuestions.add(question.id);
+            console.log(
+              `Dúvida ${question.id}: ${question.text.replace(/[\u0000-\u001f\u007f]/g, " ")}`,
+            );
+            console.log(`Responda aqui com ${question.id}: sua resposta`);
+          }
+      }
       if (!stopping)
         await new Promise((resolve) => {
           wake = resolve;
@@ -262,6 +288,7 @@ export async function main(args = process.argv.slice(2)) {
       );
     return 2;
   } finally {
+    terminalAnswers?.close();
     collector?.stop();
     if (webhook) await webhook.close();
     db?.close();

@@ -12,7 +12,7 @@ export function askQuestion(
   return db.prepare("SELECT * FROM bot_questions WHERE id=?").get(id);
 }
 
-export function acceptWhatsAppAnswer(db, { messageId, questionId, answer }) {
+export function acceptCandidateAnswer(db, { messageId, questionId, answer }) {
   return db.transaction(() => {
     if (
       db
@@ -42,6 +42,8 @@ export function acceptWhatsAppAnswer(db, { messageId, questionId, answer }) {
     return { accepted: true };
   })();
 }
+
+export const acceptWhatsAppAnswer = acceptCandidateAnswer;
 
 export function applyQuestionAnswers(store, config) {
   let profile = store.getProfile(),

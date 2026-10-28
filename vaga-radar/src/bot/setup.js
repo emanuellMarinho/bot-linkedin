@@ -17,6 +17,7 @@ export async function runSetup({
   prompt,
   output = console.log,
   env = process.env,
+  advanced = false,
 }) {
   const directory = path.dirname(path.resolve(filename));
   const existed = fs.existsSync(filename);
@@ -248,107 +249,114 @@ export async function runSetup({
         "Informe um identificador de modelo válido.",
     );
   }
-  config.whatsapp.enabled = await yes(
-    "whatsapp.enabled",
-    "Configurar agora a API oficial do WhatsApp Business?",
-    config.whatsapp.enabled,
-  );
-  if (config.whatsapp.enabled) {
-    say(
-      "O número pessoal é o destino das perguntas. Para enviar/receber pela API, use o número Business e a app Meta já cadastrados.",
+  if (advanced) {
+    config.whatsapp.enabled = await yes(
+      "whatsapp.enabled",
+      "Configurar agora a API oficial do WhatsApp Business?",
+      config.whatsapp.enabled,
     );
-    config.whatsapp.phoneNumberId = await ask(
-      "whatsapp.phoneNumberId",
-      "Phone Number ID da Meta",
-      config.whatsapp.phoneNumberId,
-      (v) =>
-        /^\d{5,30}$/.test(v) || "Informe o ID numérico do número Business.",
-    );
-    await secret(
-      "whatsapp.whatsappAccessToken",
-      "Token de acesso do WhatsApp Business",
-      "whatsappAccessToken",
-      config.whatsapp.accessTokenEnv,
-    );
-    await secret(
-      "whatsapp.metaAppSecret",
-      "App Secret da Meta (valida respostas)",
-      "metaAppSecret",
-      "VAGA_META_APP_SECRET",
-    );
-    if (
-      !config.credentials.whatsappVerifyToken &&
-      !env.VAGA_WHATSAPP_VERIFY_TOKEN
-    )
-      config.credentials.whatsappVerifyToken = randomBytes(32).toString("hex");
-    config.whatsapp.templateName = await ask(
-      "whatsapp.templateName",
-      "Nome do template aprovado (dois parâmetros)",
-      config.whatsapp.templateName,
-      (v) =>
-        /^[a-z0-9_]{1,100}$/.test(v) ||
-        "Use o nome do template cadastrado na Meta.",
-    );
-    config.whatsapp.webhookUrl = await ask(
-      "whatsapp.webhookUrl",
-      "URL pública HTTPS do webhook (Enter deixa para depois)",
-      config.whatsapp.webhookUrl || "",
-      (v) => {
-        if (!v) return true;
-        try {
-          const u = new URL(v);
-          return (
-            (u.protocol === "https:" &&
-              u.pathname.endsWith("/webhook") &&
-              !u.username &&
-              !u.password) ||
-            "Use uma URL HTTPS terminada em /webhook."
-          );
-        } catch {
-          return "Use uma URL HTTPS terminada em /webhook.";
-        }
-      },
-    );
-    config.whatsapp.autoStartWebhook = Boolean(config.whatsapp.webhookUrl);
-    if (!config.whatsapp.webhookUrl && !initial.whatsapp?.enabled) {
-      config.whatsapp.enabled = false;
+    if (config.whatsapp.enabled) {
       say(
-        "Credenciais do WhatsApp serão guardadas. Canal desativado até configurar um webhook HTTPS público.",
+        "O número pessoal é o destino das perguntas. Para enviar/receber pela API, use o número Business e a app Meta já cadastrados.",
       );
-    } else
-      say(
-        "O receptor local será iniciado junto do bot. A URL HTTPS e o template precisam estar conectados/aprovados na Meta.",
+      config.whatsapp.phoneNumberId = await ask(
+        "whatsapp.phoneNumberId",
+        "Phone Number ID da Meta",
+        config.whatsapp.phoneNumberId,
+        (v) =>
+          /^\d{5,30}$/.test(v) || "Informe o ID numérico do número Business.",
       );
-  } else config.whatsapp.autoStartWebhook = false;
+      await secret(
+        "whatsapp.whatsappAccessToken",
+        "Token de acesso do WhatsApp Business",
+        "whatsappAccessToken",
+        config.whatsapp.accessTokenEnv,
+      );
+      await secret(
+        "whatsapp.metaAppSecret",
+        "App Secret da Meta (valida respostas)",
+        "metaAppSecret",
+        "VAGA_META_APP_SECRET",
+      );
+      if (
+        !config.credentials.whatsappVerifyToken &&
+        !env.VAGA_WHATSAPP_VERIFY_TOKEN
+      )
+        config.credentials.whatsappVerifyToken =
+          randomBytes(32).toString("hex");
+      config.whatsapp.templateName = await ask(
+        "whatsapp.templateName",
+        "Nome do template aprovado (dois parâmetros)",
+        config.whatsapp.templateName,
+        (v) =>
+          /^[a-z0-9_]{1,100}$/.test(v) ||
+          "Use o nome do template cadastrado na Meta.",
+      );
+      config.whatsapp.webhookUrl = await ask(
+        "whatsapp.webhookUrl",
+        "URL pública HTTPS do webhook (Enter deixa para depois)",
+        config.whatsapp.webhookUrl || "",
+        (v) => {
+          if (!v) return true;
+          try {
+            const u = new URL(v);
+            return (
+              (u.protocol === "https:" &&
+                u.pathname.endsWith("/webhook") &&
+                !u.username &&
+                !u.password) ||
+              "Use uma URL HTTPS terminada em /webhook."
+            );
+          } catch {
+            return "Use uma URL HTTPS terminada em /webhook.";
+          }
+        },
+      );
+      config.whatsapp.autoStartWebhook = Boolean(config.whatsapp.webhookUrl);
+      if (!config.whatsapp.webhookUrl && !initial.whatsapp?.enabled) {
+        config.whatsapp.enabled = false;
+        say(
+          "Credenciais do WhatsApp serão guardadas. Canal desativado até configurar um webhook HTTPS público.",
+        );
+      } else
+        say(
+          "O receptor local será iniciado junto do bot. A URL HTTPS e o template precisam estar conectados/aprovados na Meta.",
+        );
+    } else config.whatsapp.autoStartWebhook = false;
 
-  const autoApply = await yes(
-    "autoApply.enabled",
-    "Você possui uma integração Lever autorizada pela empresa para enviar candidaturas?",
-    config.autoApply.enabled,
-  );
-  config.autoApply.enabled = Boolean(autoApply);
-  if (autoApply) {
-    const board = await ask(
-      "autoApply.board",
-      "Identificador do quadro Lever autorizado",
-      config.autoApply.sources[0]?.board || "",
-      (v) =>
-        /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/.test(v) ||
-        "Informe o identificador do quadro.",
+    const autoApply = await yes(
+      "autoApply.enabled",
+      "Você possui uma integração Lever autorizada pela empresa para enviar candidaturas?",
+      config.autoApply.enabled,
     );
-    config.autoApply.sources = [
-      {
-        provider: "lever",
-        board,
-        apiKeyEnv: config.autoApply.sources[0]?.apiKeyEnv || "VAGA_LEVER_KEY",
-        authorizationConfirmed: true,
-      },
-    ];
-    await secret(
-      "autoApply.leverApiKey",
-      "Chave da integração Lever da empresa",
-      "leverApiKey",
-      config.autoApply.sources[0].apiKeyEnv,
+    config.autoApply.enabled = Boolean(autoApply);
+    if (autoApply) {
+      const board = await ask(
+        "autoApply.board",
+        "Identificador do quadro Lever autorizado",
+        config.autoApply.sources[0]?.board || "",
+        (v) =>
+          /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/.test(v) ||
+          "Informe o identificador do quadro.",
+      );
+      config.autoApply.sources = [
+        {
+          provider: "lever",
+          board,
+          apiKeyEnv: config.autoApply.sources[0]?.apiKeyEnv || "VAGA_LEVER_KEY",
+          authorizationConfirmed: true,
+        },
+      ];
+      await secret(
+        "autoApply.leverApiKey",
+        "Chave da integração Lever da empresa",
+        "leverApiKey",
+        config.autoApply.sources[0].apiKeyEnv,
+      );
+    }
+  } else if (!config.whatsapp.enabled) {
+    say(
+      "Número pessoal salvo como destino. WhatsApp não conectado: falta um serviço remetente autenticado. Nenhum QR code ou cadastro Business será solicitado neste assistente.",
     );
   }
 
