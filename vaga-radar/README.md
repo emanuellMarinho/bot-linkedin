@@ -23,7 +23,7 @@ O assistente mostra um resumo antes de salvar. Enter mantém valores anteriores 
 | Canal | O que precisa | Como responder |
 | --- | --- | --- |
 | WhatsApp pessoal | Ler o QR com a conta do número informado | Usar **Responder** na pergunta ou `ID: resposta`, na conversa consigo mesmo |
-| SMS | Conta Twilio, credenciais e número remetente habilitado para SMS | Responder por SMS no formato `ID: resposta` |
+| SMS | Conta Twilio, credenciais e número remetente habilitado para SMS | Responder com a referência curta recebida, por exemplo `Q1234ABCD: resposta` |
 | Terminal | Apenas manter a janela aberta | Escolher **3** e digitar o número da pergunta com a resposta |
 
 A conexão é uma etapa anterior à busca. O aplicativo aguarda o WhatsApp ou valida o serviço SMS antes de começar as consultas. Se o canal falhar, apresenta opções para tentar novamente, configurar SMS, continuar pelo terminal ou encerrar. Escolher o terminal permite usar o bot enquanto o canal externo é resolvido; isso não é anunciado como WhatsApp ou SMS conectado.

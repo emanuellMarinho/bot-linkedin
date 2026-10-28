@@ -52,6 +52,7 @@ export function createTerminalUI({ output = process.stdout, width, env = process
   const pending = [];
   const aliases = new Map();
   let nextAlias = 1;
+  let lastNotificationIssue, lastAcceptance;
 
   function draw(text) {
     if (!text) return;
@@ -96,6 +97,30 @@ export function createTerminalUI({ output = process.stdout, width, env = process
   function summary(result = {}) {
     const pendingCount = Array.isArray(result.pending) ? result.pending.length : result.pending || 0;
     emit(lines(`\nRODADA CONCLUIDA\nVagas recebidas: ${result.received ?? result.collection?.received ?? 0}\nCurriculos preparados: ${result.prepared || 0}  |  Candidaturas enviadas: ${result.submitted || 0}\nPendencias: ${pendingCount}${result.next ? `\nProxima acao: ${result.next}` : ""}`));
+  }
+  function notificationStatus(stats = {}) {
+    const count = (value) => Number.isFinite(value) ? Math.max(0, Math.min(1e9, Math.floor(value))) : 0;
+    const failed = count(stats.failed), ambiguous = count(stats.ambiguous);
+    // Error text and provider responses can contain credentials or private
+    // request data. Only classification codes participate in deduplication;
+    // the UI always supplies its own plain-language message.
+    const codes = [...(Array.isArray(stats.errors) ? stats.errors : []), stats.error]
+      .filter((value) => typeof value === "string" && /^[A-Z_0-9]{1,60}$/.test(value));
+    const hasIssue = failed > 0 || ambiguous > 0 || Boolean(stats.error) || (Array.isArray(stats.errors) && stats.errors.length > 0);
+    const signature = JSON.stringify([failed, ambiguous, [...new Set(codes)].sort()]);
+    if (hasIssue && signature !== lastNotificationIssue) {
+      error(ambiguous > 0
+        ? "Nao foi possivel confirmar o envio de algumas perguntas. O resultado e incerto; elas nao serao reenviadas automaticamente. Use a opcao 3 para responder no terminal. Revise o canal com --setup."
+        : "Nao foi possivel confirmar o envio de algumas perguntas pelo canal escolhido. Use a opcao 3 para responder no terminal. Revise o canal com --setup.");
+      lastNotificationIssue = signature;
+    } else if (!hasIssue) lastNotificationIssue = undefined;
+    const accepted = count(stats.acceptedThisRun);
+    if (!accepted) { lastAcceptance = undefined; return; }
+    const acceptance = JSON.stringify([accepted, count(stats.accepted), count(stats.delivered), count(stats.read), count(stats.answered)]);
+    if (acceptance !== lastAcceptance) {
+      info(`O servico aceitou ${accepted} pergunta(s) para envio. Isso ainda nao confirma a entrega nem a sua resposta. Acompanhe as perguntas pela opcao 3.`);
+      lastAcceptance = acceptance;
+    }
   }
   function questions(rows = []) {
     if (!rows.length) { info("Nenhuma pergunta aguardando resposta."); return []; }
@@ -148,7 +173,7 @@ export function createTerminalUI({ output = process.stdout, width, env = process
     return detachReader;
   }
   return {
-    width: columns, header, step, status, info, success, error, summary, questions, menu,
+    width: columns, header, step, status, info, success, error, summary, notificationStatus, questions, menu,
     output: info, raw: (value) => emit(String(value)), suspend, withExclusive, attachReader, flush,
     resolveQuestion: (reference) => {
       if (!/^\d+$/.test(String(reference))) return String(reference);

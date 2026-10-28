@@ -173,6 +173,7 @@ export async function main(args = process.argv.slice(2)) {
   const ui = interactive ? createTerminalUI() : {
     header() {}, step() {}, status() {}, success() {}, summary() {}, menu() {},
     info: diagnostic ? console.log : () => {}, error: console.error, raw: console.log,
+    notificationStatus: (stats) => { if (stats?.failed || stats?.ambiguous) console.error("Há perguntas sem confirmação de envio. Confira o canal ou responda pelo terminal."); },
     withExclusive: (action) => action(), suspend: () => () => {},
   };
   const controller = new AbortController();
@@ -342,16 +343,20 @@ export async function main(args = process.argv.slice(2)) {
           ? "A busca esta pausada nas preferencias. O menu continua disponivel."
           : config.search.continuous ? "Consultar as fontes assim que estiverem disponiveis." : "Aguardar o proximo horario de busca." });
         else console.log(JSON.stringify({ collection: result.collection.status, received: result.collection.received, prepared: result.prepared, submitted: result.submitted, pending: result.pending.length }));
+        ui.notificationStatus(result.notifications);
         if (!values.watch) return ["partial", "failed"].includes(result.collection.status) ? 1 : 0;
       }
       if (online && !values["collect-only"] && !controller.signal.aborted) {
         // Polling and notifications use the same ordered loop as the job cycle.
         await messaging.poll();
+        const { getWhatsAppStatus } = await import("./bot/questions.js");
+        ui.notificationStatus(getWhatsAppStatus(db));
         if (within && !ran) {
           const { notifyQuestions } = await import("./bot/questions.js");
-          await notifyQuestions(db, messaging.notificationConfig, {
+          const notified = await notifyQuestions(db, messaging.notificationConfig, {
             signal: controller.signal, ...(messaging.questionSender ? { sender: messaging.questionSender } : {}),
           });
+          ui.notificationStatus(notified);
         }
       }
       if (interactive) {

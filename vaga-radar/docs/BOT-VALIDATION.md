@@ -11,7 +11,11 @@ Esta versão reorganiza o executável em etapas sequenciais e adiciona SMS como 
 - Operações do pipeline expõem progresso ordenado e aguardam suas dependências. Dados importantes ausentes continuam pausando a candidatura para consulta ao candidato.
 - Busca contínua, currículo factual ATS e conectores Lever da versão anterior são preservados; plataformas sem conector de envio continuam pendentes.
 
-**Validação final desta versão:** registrar a contagem de testes, PTY e novo run Windows após os checks. Os resultados da versão 2.2 abaixo são históricos e não comprovam o executável com o novo layout/SMS.
+**Validação local final:** `npm test` passou com **173 testes**, sem falhas, cancelamentos ou ignorados. A suíte inclui bloqueio da inicialização até a conexão, exclusividade do QR, configuração SMS na mesma sessão, recuperação após corrigir credenciais, polling e teste completo SMS com referências curtas (transportes simulados), ordem das etapas, alertas claros de mensagens não confirmadas e cancelamento de AI/envios. `--doctor` carregou os módulos reais de WhatsApp, SMS, UI, QR, navegador, PDF e SQLite.
+
+O script `python3 scripts/test-terminal-ux.py` passou em PTY real de 60 colunas. Também foram exercitados o assistente completo de sete etapas (currículo fictício, revisão, gravação e menu), a escolha explícita/persistida de terminal após SMS sem credenciais e a reabertura sem voltar ao canal indisponível. O layout final foi medido sem ultrapassar 60 colunas. Dados e serviços usados foram sintéticos, sem rede paga ou mensagens reais.
+
+As instruções de inicialização e o domínio `api.twilio.com` foram salvos no rascunho reutilizável do ambiente, preservando os domínios existentes. Isso não cria conta, número SMS ou processo hospedado. O novo pacote Windows será registrado após os checks. Os resultados da versão 2.2 abaixo são históricos e não comprovam o executável com o novo layout/SMS.
 
 Não houve uso de credenciais reais, SMS real, pareamento de WhatsApp ou candidatura em produção nos testes. SMS exige uma conta/provedor real, número compatível e eventuais tarifas/permissões geográficas. O funcionamento da conta precisa de teste de mensagem e resposta pelo canal configurado.
 

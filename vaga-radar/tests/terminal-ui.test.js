@@ -56,6 +56,41 @@ test("renderizador funciona com callback e NO_COLOR mesmo em terminal Windows", 
   assert.ok(!h.text().includes("\u001b"));
 });
 
+test("falhas de mensagens ficam visiveis sem expor erros privados e avisos repetidos sao agrupados", () => {
+  const h = capture();
+  const ui = createTerminalUI({ output: h.output });
+  const failure = { failed: 1, pending: 2, errors: ["AUTHORIZATION", "PRIVATE token=123"], error: "SYNTHETIC_SECRET_VALUE_DO_NOT_PRINT" };
+  ui.notificationStatus(failure);
+  ui.notificationStatus({ ...failure, errors: [...failure.errors].reverse() });
+  assert.equal((h.text().match(/\[ATENCAO\]/g) || []).length, 1);
+  assert.match(h.text(), /opcao 3/);
+  assert.match(h.text(), /--setup/);
+  assert.ok(!h.text().includes("SYNTHETIC_SECRET"));
+  assert.ok(!h.text().includes("token=123"));
+  ui.notificationStatus({ ambiguous: 1, errors: ["AMBIGUOUS"] });
+  assert.match(h.text(), /resultado e incerto/);
+  assert.match(h.text(), /nao serao reenviadas\s+automaticamente/);
+  ui.notificationStatus({ failed: 0, ambiguous: 0, errors: [] });
+  ui.notificationStatus(failure);
+  assert.equal((h.text().match(/\[ATENCAO\]/g) || []).length, 3);
+});
+
+test("aceitacao pelo servico nao e apresentada como entrega nem resposta recebida", () => {
+  const h = capture();
+  const ui = createTerminalUI({ output: h.output });
+  const stats = { acceptedThisRun: 2, accepted: 2, pending: 2 };
+  ui.notificationStatus(stats);
+  ui.notificationStatus(stats);
+  assert.equal((h.text().match(/O servico aceitou/g) || []).length, 1);
+  assert.match(h.text(), /aceitou 2 pergunta\(s\)/);
+  assert.match(h.text(), /ainda nao\s+confirma a entrega nem a sua resposta/);
+  ui.notificationStatus({ acceptedThisRun: 0, accepted: 2 });
+  ui.notificationStatus({ acceptedThisRun: 1, accepted: 3 });
+  assert.equal((h.text().match(/O servico aceitou/g) || []).length, 2);
+  assert.ok(!h.text().includes("Mensagem entregue"));
+  assert.ok(!h.text().includes("Resposta recebida"));
+});
+
 test("etapas exclusivas aguardam a anterior e eventos externos nao interrompem QR ou prompt", async () => {
   const h = capture();
   const ui = createTerminalUI({ output: h.output });
