@@ -142,7 +142,7 @@ function firstRunAnswers(resume) {
   };
 }
 
-test("assistente básico pede apenas número pessoal, sem QR code ou cadastro Business", async (t) => {
+test("assistente básico configura WhatsApp pessoal por QR sem cadastro Business", async (t) => {
   const { filename, resume } = workspace(t);
   const output = [];
   const prompt = scriptedPrompt(firstRunAnswers(resume), {
@@ -156,7 +156,8 @@ test("assistente básico pede apenas número pessoal, sem QR code ou cadastro Bu
   });
   const config = readBotConfig(filename);
   assert.equal(config.whatsapp.to, "5511999990000");
-  assert.equal(config.whatsapp.enabled, false);
+  assert.equal(config.whatsapp.enabled, true);
+  assert.equal(config.whatsapp.transport, "personal");
   assert.ok(
     !prompt.calls.some((c) =>
       [
@@ -165,11 +166,13 @@ test("assistente básico pede apenas número pessoal, sem QR code ou cadastro Bu
         "whatsapp.whatsappAccessToken",
         "whatsapp.metaAppSecret",
         "whatsapp.webhookUrl",
-        "autoApply.enabled",
       ].includes(c.id),
     ),
   );
-  assert.match(output.join("\n"), /WhatsApp não conectado/);
+  assert.match(output.join("\n"), /WhatsApp pessoal/);
+  assert.equal(config.search.continuous, true);
+  assert.equal(config.autoApply.enabled, true);
+  assert.equal(config.autoApply.mode, "browser");
   const env = {};
   applyLocalCredentials(config, env);
   assert.equal(env.VAGA_OPENAI_KEY, secretFixtures.openaiApiKey);
@@ -252,7 +255,7 @@ test("assistente coleta os dados, copia o currículo e salva JSON privado sem ex
   assert.equal(raw.whatsapp.enabled, true);
   assert.equal(raw.workWindow.startHour, 9);
   assert.equal(raw.workWindow.hours, 12);
-  assert.equal(raw.preferences.intervalHours, 2);
+  assert.equal(raw.search.continuous, true);
   assert.equal(raw.autoApply.enabled, false);
   for (const key of ["openaiApiKey", "whatsappAccessToken", "metaAppSecret"])
     assert.equal(raw.credentials[key], secretFixtures[key]);

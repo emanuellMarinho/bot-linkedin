@@ -15,7 +15,9 @@ export function createWhatsAppWebhook({
   verifyToken,
   appSecret,
   allowedSender,
+  phoneNumberId,
   onAnswer,
+  onStatus,
 }) {
   if (
     typeof verifyToken !== "string" ||
@@ -23,7 +25,9 @@ export function createWhatsAppWebhook({
     typeof appSecret !== "string" ||
     appSecret.length < 16 ||
     !/^\d{8,15}$/.test(allowedSender || "") ||
-    typeof onAnswer !== "function"
+    typeof onAnswer !== "function" ||
+    (phoneNumberId !== undefined && !/^\d{5,25}$/.test(phoneNumberId)) ||
+    (onStatus !== undefined && typeof onStatus !== "function")
   ) {
     throw new Error(
       "Configure os segredos do webhook e o remetente permitido antes de iniciar",
@@ -73,19 +77,36 @@ export function createWhatsAppWebhook({
         ? payload.entry.slice(0, 20)
         : [];
       for (const entry of entries) {
-        for (const change of Array.isArray(entry.changes)
+        for (const change of Array.isArray(entry?.changes)
           ? entry.changes.slice(0, 50)
           : []) {
-          const value = change.value;
+          const value = change?.value;
           if (
-            change.field !== "messages" ||
-            value?.messaging_product !== "whatsapp"
+            change?.field !== "messages" ||
+            value?.messaging_product !== "whatsapp" ||
+            (phoneNumberId && value.metadata?.phone_number_id !== phoneNumberId)
           )
             continue;
+          if (onStatus) {
+            for (const status of Array.isArray(value.statuses)
+              ? value.statuses.slice(0, 100)
+              : []) {
+              if (!status || status.recipient_id !== allowedSender) continue;
+              await onStatus({
+                messageId: status.id,
+                status: status.status,
+                recipient: status.recipient_id,
+                phoneNumberId: value.metadata?.phone_number_id,
+                timestamp: status.timestamp,
+                errorCode: Array.isArray(status.errors) ? status.errors[0]?.code : undefined,
+              });
+            }
+          }
           for (const message of Array.isArray(value.messages)
             ? value.messages.slice(0, 100)
             : []) {
             if (
+              !message ||
               message.from !== allowedSender ||
               message.type !== "text" ||
               typeof message.id !== "string" ||
@@ -98,13 +119,19 @@ export function createWhatsAppWebhook({
             const match = message.text.body.match(
               /^\s*([A-Za-z0-9_.-]{1,120})\s*:\s*([\s\S]+?)\s*$/,
             );
-            if (!match || !match[2].trim() || match[2].length > 3000) continue;
+            const replyToMessageId = message.context?.id;
+            const reply = typeof replyToMessageId === "string" &&
+              /^wamid\.[A-Za-z0-9_+/=.-]{1,500}$/.test(replyToMessageId);
+            if (!match && !reply) continue;
+            const answer = match ? match[2] : message.text.body.trim();
+            if (!answer.trim() || answer.length > 2000) continue;
             // onAnswer must atomically deduplicate message.id and resolve only a known question.
             await onAnswer({
               messageId: message.id,
               sender: message.from,
-              questionId: match[1],
-              answer: match[2],
+              ...(match ? { questionId: match[1] } : {}),
+              ...(reply ? { replyToMessageId } : {}),
+              answer,
             });
           }
         }

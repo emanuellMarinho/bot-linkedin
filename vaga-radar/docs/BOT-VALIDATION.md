@@ -1,4 +1,28 @@
-# Validação do modo bot v2
+# Validação do bot v2.2
+
+Esta versão adiciona WhatsApp pessoal por QR code, acompanhamento por comandos no terminal/conversa com você mesmo, busca contínua com limites por fonte e envio inicial por formulários Lever compatíveis. Os resultados anteriores abaixo são históricos e não substituem a validação desta versão.
+
+## Escopo e evidências da versão atual
+
+- **WhatsApp pessoal:** dispositivo vinculado via Baileys, QR no terminal, sessão local privada em `data/whatsapp-session/`, verificação da conta conectada e restauração da sessão. O bot recebe respostas por ID ou citação da pergunta e restringe o fluxo à conversa da própria conta configurada.
+- **Teste de conexão:** `--check-whatsapp` diagnostica sem enviar. `--test-whatsapp` só confirma o fluxo completo quando a resposta do candidato chega ao banco. Aceitação do transporte, entrega e leitura têm estados distintos. Perguntas de teste não entram na fila normal nem são reenviadas automaticamente.
+- **WhatsApp Cloud:** configuração anterior preservada, com assinatura HMAC, validação de Phone Number ID, respostas citadas e callbacks de entrega/leitura/falha. Rejeições definitivas podem ser revistas após corrigir a configuração; resultados ambíguos não são repetidos automaticamente.
+- **Busca contínua:** sem espera fixa de uma hora entre rodadas. Há intervalo técnico mínimo de 30 segundos por fonte, persistência de cooldown e espera adicional para erros/`Retry-After`, evitando repetição imediata ao reiniciar.
+- **Acompanhamento:** comandos `vagas`, `candidaturas`, `vaga ID` e `ajuda` usam o banco persistido e mostram pontuação, estado, link e pendências. A mesma visão é usada no terminal e na conversa WhatsApp autenticada.
+- **Formulários:** suporte inicial ao formulário público hospedado em `jobs.lever.co`; campos obrigatórios desconhecidos geram perguntas. Confirmação de envio precisa ser observada na plataforma; não é inventado um `applicationId` no modo navegador.
+- **ATS/GPT:** preparação factual do currículo preservada. GPT opcional não recebe autorização para inventar experiência ou responder dados pessoais desconhecidos. Não há garantia de aprovação em ATS.
+
+A contagem final de testes e o run Windows desta versão serão registrados após a execução dos checks. O pacote anterior `dd4356b` não contém estas mudanças e não serve como evidência do novo executável.
+
+## Limites da validação
+
+Os testes usam dados fictícios, transportes simulados e formulários interceptados. Nenhuma candidatura real foi submetida, nenhum WhatsApp pessoal foi conectado e nenhuma mensagem real ou chamada paga de GPT foi feita nesta instância. O usuário precisa ler o QR localmente e responder ao teste para comprovar a conexão da própria conta.
+
+A consulta pública de vagas, a preparação e os formulários suportados são capacidades distintas. Greenhouse/Ashby e outros sites não ganham envio universal por causa do novo conector Lever. CAPTCHA, login e controles não suportados continuam pendentes para revisão. Os testes de relógio não comprovam doze horas ininterruptas em produção nem funcionamento com o computador desligado.
+
+## Resultados históricos
+
+# Histórico da validação até v2.1
 
 Esta evolução preserva o painel antigo como opção (`npm run web`) e muda o caminho principal (`npm start`) para execução sem interface. Resultados desta sessão:
 

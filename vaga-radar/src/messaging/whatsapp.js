@@ -1,11 +1,13 @@
 // Meta Cloud API: https://github.com/WhatsApp/WhatsApp-Nodejs-SDK
 // Always use an approved template, including outside the 24-hour service window.
 export class WhatsAppError extends Error {
-  constructor(code, message) {
+  constructor(code, message, providerCode) {
     super(message);
     this.name = "WhatsAppError";
     this.code = code;
     this.requiresReconciliation = code === "AMBIGUOUS";
+    if (Number.isSafeInteger(providerCode) && providerCode >= 0)
+      this.providerCode = providerCode;
   }
 }
 
@@ -16,8 +18,10 @@ const invalid = () =>
   );
 
 async function boundedJson(response) {
-  if (Number(response.headers.get("content-length")) > 1024 * 1024)
+  if (Number(response.headers.get("content-length")) > 1024 * 1024) {
+    await response.body?.cancel();
     throw new Error("limit");
+  }
   let length = 0;
   const chunks = [];
   for await (const chunk of response.body) {
@@ -39,6 +43,7 @@ export async function sendQuestion(
     language = "pt_BR",
     apiVersion = "v24.0",
     fetcher = fetch,
+    signal,
   } = {},
 ) {
   if (!enabled) return { provider: "disabled", sent: false };
@@ -62,6 +67,8 @@ export async function sendQuestion(
     question.text.length > 700
   )
     throw invalid();
+  if (signal?.aborted)
+    throw new WhatsAppError("CANCELLED", "Envio cancelado antes da requisição");
 
   const body = {
     messaging_product: "whatsapp",
@@ -94,7 +101,9 @@ export async function sendQuestion(
         },
         body: JSON.stringify(body),
         redirect: "error",
-        signal: AbortSignal.timeout(20000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(20000)])
+          : AbortSignal.timeout(20000),
       },
     );
   } catch {
@@ -104,25 +113,44 @@ export async function sendQuestion(
     );
   }
   if (!response.ok) {
-    await response.body?.cancel();
-    if ([401, 403].includes(response.status))
+    // Only expose a numeric provider code; Meta's text may contain private data.
+    let providerCode;
+    try {
+      const error = (await boundedJson(response))?.error;
+      if (Number.isSafeInteger(error?.code) && error.code >= 0)
+        providerCode = error.code;
+    } catch {
+      // The HTTP result remains authoritative if its error body is malformed.
+    }
+    if (
+      [401, 403].includes(response.status) ||
+      (response.status >= 400 && response.status < 500 && providerCode === 190)
+    )
       throw new WhatsAppError(
         "AUTHORIZATION",
         "A autorização da integração WhatsApp precisa ser revisada",
+        providerCode,
       );
-    if (response.status === 429)
+    if (
+      response.status === 429 ||
+      (response.status >= 400 && response.status < 500 &&
+        [4, 17, 32, 613, 130429, 131048, 131056].includes(providerCode))
+    )
       throw new WhatsAppError(
         "RATE_LIMIT",
         "Limite do WhatsApp atingido; aguarde antes de uma nova tentativa",
+        providerCode,
       );
     if (response.status >= 400 && response.status < 500)
       throw new WhatsAppError(
         "REJECTED",
         "WhatsApp recusou a mensagem; revise o número e o template aprovado",
+        providerCode,
       );
     throw new WhatsAppError(
       "AMBIGUOUS",
       "Resultado do envio ao WhatsApp inconclusivo; não reenviar automaticamente",
+      providerCode,
     );
   }
   let parsed;

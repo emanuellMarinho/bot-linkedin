@@ -188,16 +188,8 @@ export async function runSetup({
         "Informe de 1 a 24 horas.",
     ),
   );
-  config.preferences.intervalHours = Number(
-    await ask(
-      "preferences.intervalHours",
-      "Intervalo entre buscas em horas (1,2,3,4,6,8,12,24)",
-      String(config.preferences.intervalHours || 1),
-      (v) =>
-        ["1", "2", "3", "4", "6", "8", "12", "24"].includes(v) ||
-        "Escolha um dos intervalos indicados.",
-    ),
-  );
+  config.search.continuous = true;
+  say("Busca contínua durante o horário configurado, respeitando os limites das fontes.");
   if (config.sources === undefined) {
     const useExamples = await yes(
       "sources.useExamples",
@@ -256,6 +248,7 @@ export async function runSetup({
       config.whatsapp.enabled,
     );
     if (config.whatsapp.enabled) {
+      config.whatsapp.transport = "cloud";
       say(
         "O número pessoal é o destino das perguntas. Para enviar/receber pela API, use o número Business e a app Meta já cadastrados.",
       );
@@ -331,6 +324,7 @@ export async function runSetup({
     );
     config.autoApply.enabled = Boolean(autoApply);
     if (autoApply) {
+      config.autoApply.mode = "api";
       const board = await ask(
         "autoApply.board",
         "Identificador do quadro Lever autorizado",
@@ -354,10 +348,25 @@ export async function runSetup({
         config.autoApply.sources[0].apiKeyEnv,
       );
     }
-  } else if (!config.whatsapp.enabled) {
+  } else {
+    if (!initial.whatsapp?.enabled || config.whatsapp.transport === "personal") {
+      config.whatsapp.transport = "personal";
+      config.whatsapp.enabled = true;
+      config.whatsapp.autoStartWebhook = false;
+    }
     say(
-      "Número pessoal salvo como destino. WhatsApp não conectado: falta um serviço remetente autenticado. Nenhum QR code ou cadastro Business será solicitado neste assistente.",
+      config.whatsapp.transport === "personal"
+        ? "WhatsApp pessoal: ao iniciar, leia o QR code em Aparelhos conectados. As perguntas chegarão na conversa com você mesmo."
+        : "Integração WhatsApp Cloud existente preservada.",
     );
+    config.autoApply.enabled = await yes(
+      "autoApply.enabled",
+      "Enviar candidaturas automaticamente nos formulários Lever compatíveis? Dados importantes ausentes serão perguntados pelo WhatsApp.",
+      initial.autoApply?.enabled ?? true,
+    );
+    if (config.autoApply.enabled && !initial.autoApply?.enabled)
+      config.autoApply.mode = "browser";
+
   }
 
   config.setup = { completed: true, version: 1 };

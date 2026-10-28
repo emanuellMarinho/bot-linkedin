@@ -1,5 +1,6 @@
 {
   "dataDir": "./data",
+  "search": { "continuous": true },
   "profile": {
     "name": "",
     "summary": "",
@@ -39,6 +40,7 @@
   ],
   "autoApply": {
     "enabled": false,
+    "mode": "browser",
     "maxPerRun": 1,
     "maxPerDay": 3,
     "sources": []
@@ -56,6 +58,7 @@
   },
   "whatsapp": {
     "enabled": false,
+    "transport": "personal",
     "phoneNumberId": "",
     "to": "",
     "accessTokenEnv": "VAGA_WHATSAPP_TOKEN",

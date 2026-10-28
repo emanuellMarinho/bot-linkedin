@@ -112,6 +112,17 @@ export function normalizePosting(provider, item, source) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function retryMetadata(header, currentTime = Date.now()) {
+  if (!header) return {};
+  const milliseconds = /^\d+$/.test(header.trim())
+    ? Number(header.trim()) * 1000
+    : Date.parse(header) - currentTime;
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return {};
+  // Preserve the provider's delay for the continuous collector, including
+  // across restarts. Do not silently shorten a long Retry-After value.
+  const retryAfterMs = Math.min(milliseconds, 8.64e15 - currentTime);
+  return { retryAfterMs, retryAt: new Date(currentTime + retryAfterMs).toISOString() };
+}
 async function boundedJson(response) {
   if (Number(response.headers.get("content-length")) > 12 * 1024 * 1024)
     throw new Error("Resposta excede 12 MB");
@@ -146,11 +157,14 @@ export async function fetchJobs(
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     if (response.ok) break;
-    if (![429, 502, 503, 504].includes(response.status) || attempt === 2)
-      throw new Error(
-        `${source.provider}: HTTP ${response.status} em ${new URL(url).hostname}`,
-      );
     const header = response.headers.get("retry-after");
+    const metadata = retryMetadata(header);
+    if (![429, 502, 503, 504].includes(response.status) || attempt === 2) {
+      await response.body?.cancel();
+      throw Object.assign(new Error(
+        `${source.provider}: HTTP ${response.status} em ${new URL(url).hostname}`,
+      ), { status: response.status, ...metadata });
+    }
     const retry =
       header && /^\d+$/.test(header)
         ? Number(header)
@@ -159,9 +173,9 @@ export async function fetchJobs(
           : 0;
     await response.body?.cancel();
     if (retry > 3)
-      throw new Error(
+      throw Object.assign(new Error(
         `${source.provider}: HTTP ${response.status}; respeitar Retry-After de ${retry}s antes da próxima coleta`,
-      );
+      ), { status: response.status, ...metadata });
     await delay(retry > 0 ? retry * 1000 : 500 * 2 ** attempt);
     signal?.throwIfAborted();
   }

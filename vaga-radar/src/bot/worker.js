@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { prepareApplication } from "../modules/assistant.js";
 import { submitLeverApplication } from "../submissions/lever.js";
+import { submitLeverBrowserApplication } from "../submissions/lever-browser.js";
 import { extractResume, createAtsResume } from "../resume/index.js";
 import { planResume } from "../ai/openai.js";
 import {
@@ -33,7 +34,7 @@ function recordReceipt(store, attemptId, applicationId, receipt) {
   if (
     receipt?.provider !== "lever" ||
     receipt.verified !== true ||
-    !receipt.applicationId
+    !(receipt.applicationId || (receipt.method === "browser" && receipt.confirmation?.sha256 && receipt.confirmation?.url))
   )
     throw new Error("Sem comprovante verificável");
   store.db.transaction(() => {
@@ -55,7 +56,7 @@ function recordReceipt(store, attemptId, applicationId, receipt) {
       .prepare(
         "UPDATE submission_attempts SET status='submitted',provider_application_id=?,error_code=NULL,updated_at=? WHERE id=?",
       )
-      .run(receipt.applicationId, at, attemptId);
+      .run(receipt.applicationId || null, at, attemptId);
     store.db
       .prepare(
         "UPDATE applications SET status='sent',sent_at=?,updated_at=? WHERE id=?",
@@ -70,7 +71,7 @@ function recordReceipt(store, attemptId, applicationId, receipt) {
       )
       .run(
         applicationId,
-        "Envio confirmado pela API autorizada do Lever; recibo registrado no banco",
+        receipt.method === "browser" ? "Envio confirmado pela página de candidatura Lever; evidência registrada no pacote local" : "Envio confirmado pela API autorizada do Lever; recibo registrado no banco",
         at,
       );
   })();
@@ -84,6 +85,7 @@ export async function runBotCycle(
     collectOnly = false,
     skipCollection = false,
     submit = submitLeverApplication,
+    browserSubmit = submitLeverBrowserApplication,
     aiPlanner = planResume,
     questionSender,
     env = process.env,
@@ -116,14 +118,14 @@ export async function runBotCycle(
       collectOnly || signal?.aborted
         ? { sent: 0, pending: 0 }
         : await notifyQuestions(store.db, config.whatsapp, {
-            env,
+            env, signal, clock,
             ...(questionSender ? { sender: questionSender } : {}),
           });
     privateJson(
       path.join(config.dataDir, "reports", "questions.json"),
       store.db
         .prepare(
-          "SELECT id,job_id,topic,text,answer,notification_status FROM bot_questions ORDER BY created_at",
+          "SELECT id,job_id,topic,text,answer,notification_status,notification_error,notification_id FROM bot_questions ORDER BY created_at",
         )
         .all(),
     );
@@ -164,7 +166,11 @@ export async function runBotCycle(
       report.skipped++;
       continue;
     }
-    const pending = (reason) => report.pending.push({ jobId: job.id, reason });
+    store.db.prepare("DELETE FROM settings WHERE key=?").run(`bot_pending:${job.id}`);
+    const pending = (reason) => {
+      report.pending.push({ jobId: job.id, reason });
+      store.db.prepare("INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(`bot_pending:${job.id}`, JSON.stringify({reason,at:now()}));
+    };
     const existing = store.db
       .prepare("SELECT * FROM submission_attempts WHERE job_id=?")
       .get(job.id);
@@ -300,12 +306,13 @@ export async function runBotCycle(
       pending("AWAITING_CANDIDATE_ANSWERS");
       continue;
     }
+    const browserMode = config.autoApply.mode === "browser";
     const source = job.sources.find(
       (s) =>
         s.provider === "lever" &&
-        config.autoApply.sources.some(
+        (browserMode || config.autoApply.sources.some(
           (c) => c.provider === "lever" && c.board === s.board,
-        ),
+        )),
     );
     if (!source) {
       pending("NO_AUTHORIZED_CONNECTOR");
@@ -314,12 +321,12 @@ export async function runBotCycle(
     const connection = config.autoApply.sources.find(
       (c) => c.board === source.board,
     );
-    if (!connection.authorizationConfirmed) {
+    if (!browserMode && !connection.authorizationConfirmed) {
       pending("PLATFORM_AUTHORIZATION_REQUIRED");
       continue;
     }
-    const apiKey = env[connection.apiKeyEnv];
-    if (!apiKey) {
+    const apiKey = connection ? env[connection.apiKeyEnv] : undefined;
+    if (!browserMode && !apiKey) {
       pending("PROVIDER_CREDENTIAL_REQUIRED");
       continue;
     }
@@ -385,7 +392,8 @@ export async function runBotCycle(
       .prepare("SELECT id FROM resumes WHERE filename=?")
       .get(resumeFilename).id;
     let attemptId;
-    store.db.transaction(() => {
+    let browserFingerprint;
+    const beginAttempt = () => store.db.transaction(() => {
       attemptId = Number(
         store.db
           .prepare(
@@ -396,12 +404,11 @@ export async function runBotCycle(
       );
       store.updateApplication(application.id, { status: "started", resumeId });
     })();
-    attemptsThisRun++;
     // Margem abaixo do limite documentado de duas requisições por segundo.
     if (lastSubmit) await delay(Math.max(0, 600 - (Date.now() - lastSubmit)));
     lastSubmit = Date.now();
     if (signal?.aborted) {
-      store.db
+      if (attemptId) store.db
         .prepare(
           "UPDATE submission_attempts SET status='failed',error_code='CANCELLED',updated_at=? WHERE id=?",
         )
@@ -409,7 +416,33 @@ export async function runBotCycle(
       break;
     }
     try {
-      const receipt = await submit({
+      let receipt;
+      if (browserMode) {
+        const answers = Object.fromEntries(store.db.prepare("SELECT metadata,answer FROM bot_questions WHERE job_id=? AND topic='form' AND answer IS NOT NULL").all(job.id).map((row)=>[JSON.parse(row.metadata).fieldKey,row.answer]));
+        browserFingerprint = crypto.createHash("sha256").update(JSON.stringify([job.description,cv.sha256,Object.fromEntries(Object.entries(profile).filter(([key])=>key!=="resumes")),config.applicant,config.whatsapp.to,config.autoApply,answers])).digest("hex");
+        const previousBlock = store.db.prepare("SELECT value FROM settings WHERE key=?").get(`browser_blocker:${job.id}`);
+        if (previousBlock) {
+          const blocker = JSON.parse(previousBlock.value);
+          if (blocker.fingerprint === browserFingerprint) { pending(blocker.reason); continue; }
+          store.db.prepare("DELETE FROM settings WHERE key=?").run(`browser_blocker:${job.id}`);
+        }
+        receipt = await browserSubmit({
+          board: source.board, postingId: source.originalId,
+          fullName:profile.name,email:config.applicant.email,phone:config.whatsapp.to,
+          links:profile.professionalLinks,resumePath:tailored.pdfPath,answers,
+        }, {signal,onBeforeSubmit:async()=>{beginAttempt(); attemptsThisRun++;}});
+        if (receipt.pendingQuestions?.length) {
+          for (const field of receipt.pendingQuestions) askQuestion(store.db,{
+            id:`FORM_${job.id}_${field.key}`,jobId:job.id,topic:'form',
+            text:`${job.company} — ${job.title}: ${field.label}${field.options?.length ? ` Opções: ${field.options.join('; ')}` : ''}${field.yesNo ? ' Responda sim ou não.' : ''}`.slice(0,700),
+            metadata:{fieldKey:field.key,options:field.options || [],yesNo:!!field.yesNo},
+          });
+          pending('AWAITING_FORM_ANSWERS');
+          continue;
+        }
+      } else {
+        beginAttempt(); attemptsThisRun++;
+        receipt = await submit({
         board: source.board,
         postingId: source.originalId,
         apiKey,
@@ -419,19 +452,22 @@ export async function runBotCycle(
         resumeName: "curriculo-ats.pdf",
         comments: profile.summary || undefined,
       });
+      }
       recordReceipt(store, attemptId, application.id, receipt);
       report.submitted++;
       privateJson(path.join(config.dataDir, "outbox", `job-${job.id}.json`), {
         ...packet,
         sent: true,
         provider: "lever",
-        applicationId: receipt.applicationId,
+        ...(receipt.applicationId ? {applicationId: receipt.applicationId} : {confirmation:receipt.confirmation,method:receipt.method}),
       });
     } catch (error) {
       const code =
         typeof error.code === "string" && /^[A-Z_]+$/.test(error.code)
           ? error.code
           : "AMBIGUOUS";
+      if (browserMode && !attemptId && browserFingerprint && ["CAPTCHA_REQUIRED","LOGIN_REQUIRED","UNSUPPORTED_FORM","INVALID_FORM_ANSWER","CONSENT_DECLINED"].includes(code))
+        store.db.prepare("INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(`browser_blocker:${job.id}`,JSON.stringify({fingerprint:browserFingerprint,reason:code}));
       const status =
         code === "RATE_LIMIT"
           ? "rate_limited"
@@ -443,7 +479,7 @@ export async function runBotCycle(
               ].includes(code)
             ? "failed"
             : "ambiguous";
-      store.db
+      if (attemptId) store.db
         .prepare(
           "UPDATE submission_attempts SET status=?,error_code=?,retry_at=?,updated_at=? WHERE id=?",
         )

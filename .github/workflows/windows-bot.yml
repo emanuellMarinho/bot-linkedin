@@ -46,6 +46,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows executable help failed' }
           if (($helpText -join "`n") -notmatch 'Vaga Radar|VagaRadar|vaga-radar') { throw 'Windows executable help did not run the bot' }
           $helpText | Write-Output
+          & ./dist/smoke/VagaRadar/VagaRadar.exe --doctor
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted executable cannot load its WhatsApp/browser/PDF/SQLite dependencies' }
           # CI has no interactive terminal. A missing configuration must create
           # its example and return instead of waiting forever for wizard input.
           $initialConfig = Join-Path $PWD 'dist/smoke/VagaRadar/first-run.json'

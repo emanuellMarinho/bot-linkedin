@@ -3,18 +3,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 import { openDatabase } from "./database/index.js";
-import { acceptWhatsAppAnswer } from "./bot/questions.js";
+import { acceptWhatsAppAnswer, recordWhatsAppStatus } from "./bot/questions.js";
 import { createWhatsAppWebhook } from "./messaging/webhook.js";
 
-export async function startWhatsAppServer({ env = process.env, dataDir } = {}) {
+export async function startWhatsAppServer({ env = process.env, dataDir, whatsapp } = {}) {
   const verifyToken = env.VAGA_WHATSAPP_VERIFY_TOKEN;
   const appSecret = env.VAGA_META_APP_SECRET;
-  const allowedSender = env.VAGA_WHATSAPP_TO;
+  const allowedSender = whatsapp?.to || env.VAGA_WHATSAPP_TO;
+  const phoneNumberId = whatsapp?.phoneNumberId || env.VAGA_WHATSAPP_PHONE_NUMBER_ID;
   const host = env.VAGA_WHATSAPP_HOST || "127.0.0.1";
   const port = Number(env.VAGA_WHATSAPP_PORT || 3001);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error("Porta do webhook inválida");
-  if (!verifyToken || !appSecret || !allowedSender)
+  if (!verifyToken || !appSecret || !allowedSender || !phoneNumberId)
     throw new Error(
       "Configure os segredos do webhook e o remetente permitido nas variáveis de ambiente",
     );
@@ -23,7 +24,9 @@ export async function startWhatsAppServer({ env = process.env, dataDir } = {}) {
     verifyToken,
     appSecret,
     allowedSender,
+    phoneNumberId,
     onAnswer: (input) => acceptWhatsAppAnswer(db, input),
+    onStatus: (input) => recordWhatsAppStatus(db, input),
   });
   const db = openDatabase(
     path.join(

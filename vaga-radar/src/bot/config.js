@@ -9,6 +9,7 @@ export const botConfigInput = z
     profile: profileInput.partial().optional(),
     preferences: settingsInput.partial().default({}),
     sources: z.array(sourceInput).max(100).optional(),
+    search: z.object({ continuous: z.boolean().default(true) }).strict().default({ continuous: true }),
     setup: z
       .object({ completed: z.boolean(), version: z.literal(1) })
       .strict()
@@ -33,6 +34,7 @@ export const botConfigInput = z
     autoApply: z
       .object({
         enabled: z.boolean().default(false),
+        mode: z.enum(["api", "browser"]).default("api"),
         maxPerRun: z.number().int().min(1).max(10).default(1),
         maxPerDay: z.number().int().min(1).max(20).default(3),
         sources: z
@@ -50,7 +52,7 @@ export const botConfigInput = z
           .default([]),
       })
       .strict()
-      .default({ enabled: false, maxPerRun: 1, maxPerDay: 3, sources: [] }),
+      .default({ enabled: false, mode: "api", maxPerRun: 1, maxPerDay: 3, sources: [] }),
     ai: z
       .object({
         enabled: z.boolean().default(false),
@@ -93,6 +95,7 @@ export const botConfigInput = z
     whatsapp: z
       .object({
         enabled: z.boolean().default(false),
+        transport: z.enum(["personal", "cloud"]).optional(),
         phoneNumberId: z.string().regex(/^\d*$/).default(""),
         to: z.string().regex(/^\d*$/).default(""),
         accessTokenEnv: z
@@ -112,8 +115,10 @@ export const botConfigInput = z
         autoStartWebhook: z.boolean().default(false),
       })
       .strict()
+      .transform((value) => ({ ...value, transport: value.transport || (value.phoneNumberId ? "cloud" : "personal") }))
       .default({
         enabled: false,
+        transport: "personal",
         phoneNumberId: "",
         to: "",
         accessTokenEnv: "VAGA_WHATSAPP_TOKEN",

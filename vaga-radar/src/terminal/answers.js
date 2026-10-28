@@ -4,7 +4,7 @@ import { acceptCandidateAnswer } from "../bot/questions.js";
 
 export function startTerminalAnswers(
   db,
-  { input = process.stdin, output = process.stdout, onStop = () => {} } = {},
+  { input = process.stdin, output = process.stdout, onStop = () => {}, onCommand } = {},
 ) {
   const rl = createInterface({
     input,
@@ -14,11 +14,23 @@ export function startTerminalAnswers(
   });
   let closing = false;
   const line = (raw) => {
+    if (onCommand) {
+      try {
+        const result = onCommand(raw);
+        if (typeof result === "string") {
+          output.write(result + "\n");
+          return;
+        }
+      } catch {
+        output.write("Não consegui consultar o acompanhamento. Tente novamente.\n");
+        return;
+      }
+    }
     const match = raw.trim().match(/^([A-Za-z0-9_.-]{1,120}):\s*(.+)$/);
     if (!match) {
       if (raw.trim())
         output.write(
-          "Para responder uma dúvida, digite ID: sua resposta. Ctrl+C encerra.\n",
+          "Digite vagas, candidaturas, vaga ID ou ajuda. Para responder uma dúvida: ID: sua resposta. Ctrl+C encerra.\n",
         );
       return;
     }
