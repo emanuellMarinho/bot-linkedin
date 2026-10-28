@@ -4,7 +4,7 @@ Aplicativo de terminal para procurar vagas, preparar currículos ATS e acompanha
 
 ## Começar no Windows
 
-1. Baixe **VagaRadar-Windows-x64** no [workflow Windows bot](https://github.com/emanuellMarinho/bot-linkedin/actions/workflows/windows-bot.yml), pela seção **Artifacts** de uma execução concluída com sucesso. O GitHub exige login para baixar.
+1. Baixe **VagaRadar-Windows-x64** no [build validado da versão 2.3](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40677472466), pela seção **Artifacts**. O GitHub exige login para baixar.
 2. Extraia tudo. Mantenha **`VagaRadar.exe` e `app/` juntos**; o runtime Node está incluído.
 3. Abra `VagaRadar.exe` e siga as sete etapas: perfil, currículo, rotina, canal de avisos, GPT, candidaturas e revisão final.
 4. Aguarde a validação do currículo e a conclusão da conexão escolhida. O bot apresenta o resultado de cada etapa antes de avançar.
