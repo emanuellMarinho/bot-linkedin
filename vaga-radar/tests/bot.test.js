@@ -18,6 +18,8 @@ import { SubmissionError } from "../src/submissions/lever.js";
 import { extractResume } from "../src/resume/index.js";
 import { openDatabase } from "../src/database/index.js";
 import { createStore } from "../src/database/store.js";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // No HTTP server, real messaging service or real application is used here.
 // Candidate identities and credentials below are synthetic test fixtures.
@@ -34,6 +36,55 @@ const collector = {
     errors: "[]",
   }),
 };
+
+test("encerrar ciclo antes do envio impede candidaturas e notificações", async (t) => {
+  const h = harness();
+  t.after(() => h.close());
+  const { config } = configure(h);
+  const controller = new AbortController();
+  controller.abort();
+  let externalCalls = 0;
+  const report = await runBotCycle(h.store, collector, config, {
+    signal: controller.signal,
+    submit: async () => {
+      externalCalls++;
+    },
+    questionSender: async () => {
+      externalCalls++;
+    },
+    env: dummyEnv,
+  });
+  assert.equal(externalCalls, 0);
+  assert.equal(report.submitted, 0);
+  assert.equal(report.prepared, 0);
+});
+
+test("CLI informa webhook sem credenciais sem rejeição assíncrona nem listener", (t) => {
+  const h = harness();
+  t.after(() => h.close());
+  const filename = path.join(h.dataDir, "bot.json");
+  fs.writeFileSync(filename, JSON.stringify({ dataDir: "data", sources: [] }));
+  const env = { ...process.env };
+  for (const name of [
+    "VAGA_WHATSAPP_VERIFY_TOKEN",
+    "VAGA_META_APP_SECRET",
+    "VAGA_WHATSAPP_TO",
+  ])
+    delete env[name];
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("../src/bot.js", import.meta.url)),
+      "--config",
+      filename,
+      "--whatsapp-webhook",
+    ],
+    { env, encoding: "utf8", timeout: 20000 },
+  );
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Webhook não iniciado/);
+  assert.ok(!result.stderr.includes("UnhandledPromiseRejection"));
+});
 
 function configure(h, changes = {}) {
   const resumePath = path.join(h.dataDir, "original-fixture.txt");

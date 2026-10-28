@@ -71,10 +71,17 @@ export async function main(args = process.argv.slice(2)) {
     quiet: true,
   });
   if (values["whatsapp-webhook"]) {
-    const { startWhatsAppServer } = await import("./whatsapp-server.js");
-    const config = readBotConfig(filename);
-    startWhatsAppServer({ dataDir: config.dataDir });
-    return 0;
+    try {
+      const { startWhatsAppServer } = await import("./whatsapp-server.js");
+      const config = readBotConfig(filename);
+      await startWhatsAppServer({ dataDir: config.dataDir });
+      return 0;
+    } catch {
+      console.error(
+        "Webhook não iniciado. Configure os segredos locais, o remetente e uma porta disponível.",
+      );
+      return 2;
+    }
   }
   const { inWorkWindow } = await import("./bot/schedule.js");
   const controller = new AbortController();
