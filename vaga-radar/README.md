@@ -6,7 +6,7 @@ A busca é contínua durante a janela de trabalho, inicialmente **08h–20h, Ame
 
 ## Primeiro uso no Windows
 
-1. Baixe o artefato **VagaRadar-Windows-x64** no [workflow Windows bot](https://github.com/emanuellMarinho/bot-linkedin/actions/workflows/windows-bot.yml). Abra uma execução concluída com sucesso e sua seção **Artifacts**; o GitHub exige login para baixar.
+1. Baixe o artefato **VagaRadar-Windows-x64** no [build validado da versão 2.2](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40615734776), na seção **Artifacts**; o GitHub exige login para baixar.
 2. Extraia o pacote inteiro, mantendo **`VagaRadar.exe` e `app/` juntos**. O runtime Node está incluído.
 3. Abra `VagaRadar.exe`. Informe nome, e-mail, caminho do currículo, habilidades, número pessoal com país/DDD, horário e opções do bot. O assistente salva tudo em `bot.config.json` e copia o currículo para a pasta privada.
 4. No celular, abra **WhatsApp → Aparelhos conectados → Conectar aparelho** e leia o QR code mostrado no terminal com a conta do número informado.
@@ -106,7 +106,7 @@ npm run test:ui
 
 `npm start` e o `.exe` sem argumentos permanecem em execução. `--once` executa uma rodada; `--collect-only` consulta sem enviar perguntas/candidaturas. Sem terminal e sem configuração, o bot grava um exemplo e retorna código 2. `--setup` exige terminal interativo.
 
-O [workflow Windows](https://github.com/emanuellMarinho/bot-linkedin/actions/workflows/windows-bot.yml) instala pelo lockfile, executa testes e gera/testa o pacote SEA em Windows x64. Compilação local no Windows: `npm ci` e `npm run build:windows`. O pacote inclui `app/`; o executável não tem assinatura Authenticode do desenvolvedor.
+O [workflow Windows](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40615734776) passou em Windows x64: instalação pelo lockfile, testes, geração SEA e execução do pacote extraído, incluindo dependências WhatsApp/navegador/PDF/SQLite. A suíte local final passou com 131 testes. Compilação local no Windows: `npm ci` e `npm run build:windows`. O pacote inclui `app/`; o executável não tem assinatura Authenticode do desenvolvedor.
 
 Testes de integração usam serviços simulados e formulários interceptados; não enviam candidaturas reais, mensagens reais ou chamadas pagas de GPT. A conexão com seu WhatsApp só pode ser comprovada após ler o QR no seu computador e responder ao teste. A janela de trabalho é testada com relógio controlado, sem afirmar doze horas de produção contínua. Evidências em [docs/BOT-VALIDATION.md](docs/BOT-VALIDATION.md).
 
