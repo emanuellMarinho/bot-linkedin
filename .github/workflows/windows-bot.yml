@@ -41,6 +41,7 @@ jobs:
         run: npm run build:windows
       - name: Smoke test extracted Windows package
         run: |
+          Start-Transcript -LiteralPath dist/windows-smoke.log -Force
           Expand-Archive -LiteralPath dist/VagaRadar-Windows-x64.zip -DestinationPath dist/smoke
           $helpText = & ./dist/smoke/VagaRadar/VagaRadar.exe --help
           if ($LASTEXITCODE -ne 0) { throw 'Windows executable help failed' }
@@ -95,6 +96,19 @@ jobs:
           if ($smsExit -ne 2) { throw 'SMS without credentials must block before collection' }
           $smsReport = Join-Path (Split-Path $smsConfig) 'sms-blocked-data/reports/latest.json'
           if (Test-Path $smsReport) { throw 'Executable ran a collection cycle before SMS was ready' }
+          Stop-Transcript
+          # GitHub's pwsh wrapper exits with the last native exit code. The
+          # expected SMS rejection above is 2; all assertions must pass before
+          # explicitly ending the smoke with success.
+          exit 0
+      - name: Save smoke diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-smoke-diagnostics
+          path: vaga-radar/dist/windows-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: VagaRadar-Windows-x64
