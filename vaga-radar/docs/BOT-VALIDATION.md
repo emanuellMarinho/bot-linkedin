@@ -2,7 +2,7 @@
 
 Esta evolução preserva o painel antigo como opção (`npm run web`) e muda o caminho principal (`npm start`) para execução sem interface. Resultados desta sessão:
 
-- `npm test`: **67 passaram**, zero falhas/ignorados/cancelados. Inclui 27 verificações anteriores, pipeline sem servidor, currículo ATS real, GPT opcional, webhook/respostas WhatsApp e submissão Lever com fetch simulado.
+- `npm test`: **69 passaram**, zero falhas/ignorados/cancelados. Inclui 27 verificações anteriores, pipeline sem servidor, currículo ATS real, GPT opcional, webhook/respostas WhatsApp e submissão Lever com fetch simulado.
 - `npm run test:ui`: regressão Chromium desktop/mobile passou, sem mensagens/candidaturas reais.
 - CLI `--help`: executado. Ciclo `--once --collect-only` isolado, com coleta pausada: executado e relatório persistido, sem iniciar servidor.
 - Coleta real pelo entrypoint sem interface: **266 vagas recebidas e persistidas, zero erros**, em banco temporário isolado removido após validação. Sem perfil/currículo real fornecido, nenhuma preparação ou candidatura pessoal foi realizada nessa coleta.
