@@ -12,7 +12,7 @@ Esta evolução preserva o painel antigo como opção (`npm run web`) e muda o c
 - Envio: connector Lever verifica recibo da API; timeout ambíguo persiste e não é repetido após reinício. Testes não autorizam ou comprovam envio real; não há credencial de integração da empresa nesta instância.
 - Horário: limites 08h–20h de São Paulo e virada da meia-noite testados com relógio controlado. Não foram executadas doze horas contínuas de produção, nem instalado agendamento no computador do usuário.
 - `npm audit --omit=dev --audit-level=high`: zero vulnerabilidades relatadas no momento da consulta.
-- Windows: código de empacotamento SEA e workflow criados; teste local recusa compilação em sistema incompatível. Não há Windows nesta máquina Linux. É necessário comprovar build e smoke do artefato no runner Windows antes de afirmar que o `.exe` foi entregue/testado. O pacote é `.exe` mais diretório `app/`, não arquivo único.
+- Windows: **build e smoke reais concluídos com sucesso** no [run 40607731691](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40607731691), commit `e8df71b`, duração 3m42s. O runner executou instalação pelo lockfile, npm test em Windows, geração SEA, extração do ZIP, `--help` do executável e ciclo isolado com relatório persistido/sem painel. Artefato `VagaRadar-Windows-x64`, 74,4 MB. O pacote é `.exe` mais diretório `app/`, não arquivo único. Esse smoke não comprova operação contínua de doze horas nem integrações externas com credenciais reais.
 
 ## Integrações e configuração pendentes
 
