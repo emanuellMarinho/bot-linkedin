@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
+import { wrapTerminalText } from "./ui.js";
 
 export class SetupCancelled extends Error {
   constructor() {
@@ -34,21 +35,22 @@ export function createTerminalPrompt({
     cancelled = true;
     controller.abort();
   });
-  async function ask(
+  async function runAsk(
     label,
     { defaultValue = "", secret = false, required = false, validate } = {},
   ) {
     while (true) {
       if (cancelled) throw new SetupCancelled();
       const suffix = defaultValue && !secret ? ` [${defaultValue}]` : "";
+      const question = `${wrapTerminalText(`${label}${suffix}`, Math.max(24, (output.columns || 68) - 2)).join("\n")}\n> `;
       let value;
       try {
         if (secret) {
-          output.write(`${label}: `);
+          output.write(question);
           muted = terminal;
           value = await rl.question("", { signal: controller.signal });
         } else
-          value = await rl.question(`${label}${suffix}: `, {
+          value = await rl.question(question, {
             signal: controller.signal,
           });
       } catch {
@@ -77,6 +79,33 @@ export function createTerminalPrompt({
       }
       return value;
     }
+  }
+  // A question owns the terminal through validation. A second caller waits
+  // instead of replacing readline's active question while work is unfinished.
+  let active = false;
+  const requests = [];
+  function drain() {
+    if (active || !requests.length) return;
+    active = true;
+    const request = requests.shift();
+    runAsk(request.label, request.options).then(
+      (value) => {
+        active = false;
+        request.resolve(value);
+        drain();
+      },
+      (error) => {
+        active = false;
+        request.reject(error);
+        drain();
+      },
+    );
+  }
+  function ask(label, options) {
+    return new Promise((resolve, reject) => {
+      requests.push({ label, options, resolve, reject });
+      drain();
+    });
   }
   async function confirm(label, { defaultValue = false, ...options } = {}) {
     const value = await ask(`${label} (s/n)`, {

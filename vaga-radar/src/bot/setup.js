@@ -6,6 +6,7 @@ import { botConfigInput } from "./config.js";
 import { extractResume } from "../resume/index.js";
 import { skills } from "../config.js";
 import { SetupCancelled } from "../terminal/prompts.js";
+import { createTerminalUI } from "../terminal/ui.js";
 
 function removeQuotes(value) {
   const text = value.trim();
@@ -28,12 +29,16 @@ export async function runSetup({
   config = structuredClone(config);
   config.profile ||= {};
   config.credentials ||= {};
-  const say = (message) => output(message);
+  config.notifications ||= { channel: "whatsapp", requireConnection: true };
+  config.sms ||= { enabled: false, accountSidEnv: "VAGA_TWILIO_ACCOUNT_SID", authTokenEnv: "VAGA_TWILIO_AUTH_TOKEN", from: "", to: "", pollIntervalSeconds: 15 };
+  const ui = createTerminalUI({ output });
+  const say = (message) => ui.info(message);
+  const step = (index, title, detail) => ui.step(index, 7, title, detail);
   async function ask(id, label, defaultValue = "", validate, extra = {}) {
     while (true) {
       const answer =
         String(
-          await prompt.ask(label, { id, defaultValue, validate, ...extra }),
+          await prompt.ask(label, { id, defaultValue, ...extra }),
         ).trim() || String(defaultValue);
       const result = validate ? await validate(answer) : true;
       if (result === true || result === undefined) return answer;
@@ -44,27 +49,26 @@ export async function runSetup({
       );
     }
   }
-  async function secret(id, label, field, envName) {
+  async function secret(id, label, field, envName, validate) {
     const old = config.credentials[field] || "";
     const current = Boolean(old || env[envName]);
     const answer = await ask(
       id,
       `${label}${current ? " (Enter mantém a chave atual)" : ""}`,
       "",
-      (value) =>
-        value || current
-          ? true
-          : "Informe a chave para habilitar esta integração.",
+      (value) => {
+        if (!value) return current || "Informe a chave para habilitar esta integração.";
+        return validate ? validate(value) : true;
+      },
       { secret: true, required: !current },
     );
     if (answer) config.credentials[field] = answer;
   }
   const yes = (id, label, defaultValue) =>
     prompt.confirm(label, { id, defaultValue });
-  say("\nVAGA RADAR — CONFIGURAÇÃO PELO TERMINAL");
-  say(
-    "Suas respostas serão salvas em um JSON privado. As chaves digitadas ficam ocultas. Ctrl+C cancela sem alterar a configuração.",
-  );
+  ui.header("VAGA RADAR", "Configuração guiada");
+  say("Vamos configurar uma etapa por vez. Enter mantém o valor mostrado; Ctrl+C cancela sem salvar.");
+  step(1, "Seu perfil", "Use apenas informações profissionais reais.");
   config.profile.name = await ask(
     "profile.name",
     "Seu nome profissional",
@@ -78,25 +82,6 @@ export async function runSetup({
     config.applicant.email || "",
     (v) => z.email().safeParse(v).success || "Informe um e-mail válido.",
   );
-  let resume, sourcePath;
-  const previousResume = config.applicant.resumePath
-    ? path.resolve(directory, config.applicant.resumePath)
-    : "";
-  sourcePath = await ask(
-    "applicant.resumePath",
-    "Caminho do currículo PDF ou TXT (pode arrastar o arquivo para o terminal)",
-    previousResume,
-    async (value) => {
-      try {
-        sourcePath = path.resolve(directory, removeQuotes(value));
-        resume = await extractResume(sourcePath);
-        return true;
-      } catch {
-        return "Não consegui ler esse currículo. Use PDF com texto ou TXT de até 2 MB e confira o caminho.";
-      }
-    },
-  );
-  sourcePath = path.resolve(directory, removeQuotes(sourcePath));
   config.profile.summary = await ask(
     "profile.summary",
     "Resumo profissional (Enter mantém; pode deixar vazio)",
@@ -156,16 +141,33 @@ export async function runSetup({
   config.profile.seniority = { 1: "junior", 2: "mid", 3: "senior" }[
     config.profile.seniority
   ];
-  config.whatsapp.to = (
-    await ask(
-      "whatsapp.to",
-      "Seu número do WhatsApp com país e DDD",
-      config.whatsapp.to || "",
-      (v) =>
-        /^\d{10,15}$/.test(v.replace(/\D/g, "")) ||
-        "Informe país, DDD e número, por exemplo +55 11 99999-9999.",
-    )
-  ).replace(/\D/g, "");
+  step(2, "Currículo", "A leitura do arquivo precisa terminar antes de continuar.");
+  let resume, sourcePath;
+  const previousResume = config.applicant.resumePath
+    ? path.resolve(directory, config.applicant.resumePath)
+    : "";
+  sourcePath = await ask(
+    "applicant.resumePath",
+    "Arraste o currículo PDF/TXT para esta janela ou informe o caminho",
+    previousResume,
+    async (value) => {
+      try {
+        ui.info("Lendo o currículo... aguarde.");
+        sourcePath = path.resolve(directory, removeQuotes(value));
+        resume = await extractResume(sourcePath);
+        return true;
+      } catch {
+        return "Não consegui ler esse currículo. Use PDF com texto ou TXT de até 2 MB e confira o caminho.";
+      }
+    },
+  );
+  sourcePath = path.resolve(directory, removeQuotes(sourcePath));
+  ui.success(`Currículo legível: ${path.basename(sourcePath)} (${resume.text.length.toLocaleString("pt-BR")} caracteres de texto).`);
+  say("O original será preservado. Uma cópia privada será criada somente ao salvar a configuração.");
+  if (!await yes("resume.confirm", "Continuar com este currículo?", true))
+    throw new SetupCancelled();
+
+  step(3, "Rotina de busca", "A busca é contínua dentro do horário escolhido.");
 
   config.workWindow.enabled = true;
   config.workWindow.startHour = Number(
@@ -220,6 +222,46 @@ export async function runSetup({
       : [];
   }
 
+  step(4, "Como receber perguntas", "Escolha um canal. A conexão será verificada antes de iniciar as buscas.");
+  say("1. WhatsApp pessoal: conexão por QR code.");
+  say("2. SMS: exige conta Twilio, token e número remetente habilitado para SMS.");
+  say("3. Somente terminal: responda aqui, sem conectar um serviço externo.");
+  const currentChannel = existed ? config.notifications.channel || (config.sms.enabled ? "sms" : "whatsapp") : "whatsapp";
+  const selectedChannel = await ask(
+    "notifications.channel", "Canal de perguntas (1, 2 ou 3)",
+    { whatsapp: "1", sms: "2", terminal: "3" }[currentChannel] || "1",
+    (value) => /^[123]$/.test(value) || "Escolha 1, 2 ou 3.",
+  );
+  config.notifications = { channel: { 1: "whatsapp", 2: "sms", 3: "terminal" }[selectedChannel], requireConnection: true };
+  if (config.notifications.channel !== "terminal") {
+    const number = await ask(
+      "whatsapp.to", "Seu número com país e DDD",
+      config.notifications.channel === "sms" ? config.sms.to || config.whatsapp.to || "" : config.whatsapp.to || "",
+      (value) => (/^[+\d\s().-]+$/.test(value) && /^[1-9]\d{7,14}$/.test(value.replace(/\D/g, ""))) || "Informe país, DDD e número, por exemplo +55 11 99999-9999.",
+    );
+    config.whatsapp.to = number.replace(/\D/g, "");
+    if (config.notifications.channel === "sms") config.sms.to = "+" + config.whatsapp.to;
+  }
+  config.sms.enabled = config.notifications.channel === "sms";
+  if (config.notifications.channel === "sms") {
+    config.whatsapp.enabled = false;
+    config.whatsapp.autoStartWebhook = false;
+    say("SMS não conecta apenas com o telefone. Use uma conta Twilio própria; o serviço pode cobrar pelas mensagens.");
+    await secret("sms.twilioAccountSid", "Account SID da Twilio", "twilioAccountSid", config.sms.accountSidEnv, (value) => /^AC[a-fA-F0-9]{32}$/.test(value) || "O Account SID começa com AC e tem 32 caracteres hexadecimais depois do prefixo.");
+    await secret("sms.twilioAuthToken", "Auth Token da Twilio", "twilioAuthToken", config.sms.authTokenEnv);
+    config.sms.from = "+" + (await ask(
+      "sms.from", "Número Twilio remetente com país e DDD", config.sms.from,
+      (value) => /^\+?[1-9]\d{7,14}$/.test(value.replace(/[\s()-]/g, "")) || "Informe o número remetente SMS da sua conta Twilio.",
+    )).replace(/\D/g, "");
+    ui.success("Dados de SMS preenchidos. O envio e a resposta ainda serão testados.");
+  } else if (config.notifications.channel === "terminal") {
+    config.whatsapp.enabled = false;
+    config.whatsapp.autoStartWebhook = false;
+    ui.success("Perguntas serão apresentadas no próprio terminal.");
+  }
+
+  step(5, "GPT opcional", "Pode continuar sem uma API de inteligência artificial.");
+
   config.ai.enabled = await yes(
     "ai.enabled",
     "Usar GPT para interpretar vagas e levantar dúvidas?",
@@ -241,6 +283,7 @@ export async function runSetup({
         "Informe um identificador de modelo válido.",
     );
   }
+  step(6, "Candidaturas", "Escolha se o bot poderá enviar os formulários compatíveis.");
   if (advanced) {
     config.whatsapp.enabled = await yes(
       "whatsapp.enabled",
@@ -248,6 +291,8 @@ export async function runSetup({
       config.whatsapp.enabled,
     );
     if (config.whatsapp.enabled) {
+      config.notifications.channel = "whatsapp";
+      config.sms.enabled = false;
       config.whatsapp.transport = "cloud";
       say(
         "O número pessoal é o destino das perguntas. Para enviar/receber pela API, use o número Business e a app Meta já cadastrados.",
@@ -349,25 +394,37 @@ export async function runSetup({
       );
     }
   } else {
-    if (!initial.whatsapp?.enabled || config.whatsapp.transport === "personal") {
+    if (config.notifications.channel === "whatsapp" && (!initial.whatsapp?.enabled || config.whatsapp.transport === "personal")) {
       config.whatsapp.transport = "personal";
       config.whatsapp.enabled = true;
       config.whatsapp.autoStartWebhook = false;
     }
-    say(
+    if (config.notifications.channel === "whatsapp") say(
       config.whatsapp.transport === "personal"
-        ? "WhatsApp pessoal: ao iniciar, leia o QR code em Aparelhos conectados. As perguntas chegarão na conversa com você mesmo."
+        ? "WhatsApp pessoal selecionado. Na próxima etapa, leia o QR code e aguarde a confirmação da conexão."
         : "Integração WhatsApp Cloud existente preservada.",
     );
     config.autoApply.enabled = await yes(
       "autoApply.enabled",
-      "Enviar candidaturas automaticamente nos formulários Lever compatíveis? Dados importantes ausentes serão perguntados pelo WhatsApp.",
+      "Enviar candidaturas automaticamente nos formulários Lever compatíveis? Dados importantes ausentes serão perguntados pelo canal escolhido.",
       initial.autoApply?.enabled ?? true,
     );
     if (config.autoApply.enabled && !initial.autoApply?.enabled)
       config.autoApply.mode = "browser";
 
   }
+
+  step(7, "Revisar e salvar", "Confira as escolhas antes de iniciar a conexão e a rotina.");
+  ui.status("Nome", config.profile.name);
+  ui.status("E-mail", config.applicant.email);
+  ui.status("Currículo", path.basename(sourcePath));
+  ui.status("Rotina", `${config.workWindow.startHour}h, ${config.workWindow.hours} horas/dia — ${config.workWindow.timeZone}`);
+  ui.status("Perguntas", { whatsapp: "WhatsApp", sms: "SMS", terminal: "Terminal" }[config.notifications.channel]);
+  ui.status("GPT", config.ai.enabled ? "Ativado" : "Desativado");
+  ui.status("Candidaturas", config.autoApply.enabled ? "Envio automático nos conectores compatíveis" : "Preparar para revisão");
+  say("As chaves ficam no JSON local privado. Nenhuma chave aparece neste resumo.");
+  if (!await yes("setup.confirm", "Salvar esta configuração e continuar?", true))
+    throw new SetupCancelled();
 
   config.setup = { completed: true, version: 1 };
   config = botConfigInput.parse(config);
@@ -406,14 +463,14 @@ export async function runSetup({
       } catch {}
     throw error;
   }
-  say("\nConfiguração salva. Currículo copiado para a pasta privada do bot.");
+  ui.success("Configuração salva e currículo copiado para a pasta privada.");
   say(
     "As chaves ficam no JSON privado, sem aparecer no terminal. Não compartilhe esse arquivo.",
   );
   say(
     `Rotina: ${config.workWindow.startHour}h, ${config.workWindow.hours} horas/dia, fuso ${config.workWindow.timeZone}.`,
   );
-  say("O terminal continuará aberto. Ctrl+C encerra o bot.");
+  say("A seguir, o aplicativo verificará o canal escolhido. As buscas só começam quando essa etapa terminar.");
   return config;
 }
 

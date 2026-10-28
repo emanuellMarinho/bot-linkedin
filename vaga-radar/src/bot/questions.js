@@ -205,7 +205,7 @@ export async function notifyQuestions(
   const result = (extra = {}) => ({ ...getWhatsAppStatus(db), sent: accepted, acceptedThisRun: accepted, ...extra });
   if (!config.enabled || signal?.aborted) return result();
   const accessToken = env[config.accessTokenEnv];
-  const personal = config.transport === "personal";
+  const personal = ["personal", "sms"].includes(config.transport);
   if (
     !config.to ||
     (personal ? sender === sendQuestion : !accessToken || !config.phoneNumberId || !config.templateName)
@@ -214,7 +214,8 @@ export async function notifyQuestions(
   const fingerprint = crypto.createHash("sha256").update(JSON.stringify([
     config.transport || "cloud",
     config.phoneNumberId, config.to, config.templateName, config.language,
-    config.apiVersion, accessToken,
+    config.apiVersion, accessToken, config.from,
+    config.transport === "sms" ? env[config.accountIdEnv] : undefined,
   ])).digest("hex");
   // Only a meaningful configuration/token change unlocks definite failures.
   // Accepted and ambiguous requests are never blindly replayed.

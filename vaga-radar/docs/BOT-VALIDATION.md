@@ -1,3 +1,22 @@
+# Validação do bot v2.3 — fluxo de terminal e SMS
+
+Esta versão reorganiza o executável em etapas sequenciais e adiciona SMS como alternativa ao WhatsApp. A configuração, a conexão e o início da busca têm estados separados: uma etapa precisa terminar antes de a próxima começar.
+
+## Escopo da versão atual
+
+- Assistente com sete etapas numeradas, validação do currículo antes de prosseguir e revisão final antes de salvar. Cancelar preserva os arquivos anteriores.
+- Layout de terminal adaptado à largura, menu numérico e respostas por números curtos. Comandos assíncronos são executados em ordem; atualizações não substituem texto que está sendo digitado.
+- Inicialização aguarda a conexão WhatsApp ou a validação do serviço SMS antes de começar a coleta. Erros oferecem tentar novamente, configurar SMS, continuar explicitamente pelo terminal ou encerrar.
+- SMS via Twilio REST, com credenciais locais e número remetente habilitado. O serviço consulta respostas recebidas sem webhook público e deduplica mensagens. A validação da conta não é apresentada como prova de entrega.
+- Operações do pipeline expõem progresso ordenado e aguardam suas dependências. Dados importantes ausentes continuam pausando a candidatura para consulta ao candidato.
+- Busca contínua, currículo factual ATS e conectores Lever da versão anterior são preservados; plataformas sem conector de envio continuam pendentes.
+
+**Validação final desta versão:** registrar a contagem de testes, PTY e novo run Windows após os checks. Os resultados da versão 2.2 abaixo são históricos e não comprovam o executável com o novo layout/SMS.
+
+Não houve uso de credenciais reais, SMS real, pareamento de WhatsApp ou candidatura em produção nos testes. SMS exige uma conta/provedor real, número compatível e eventuais tarifas/permissões geográficas. O funcionamento da conta precisa de teste de mensagem e resposta pelo canal configurado.
+
+## Histórico da versão 2.2
+
 # Validação do bot v2.2
 
 Esta versão adiciona WhatsApp pessoal por QR code, acompanhamento por comandos no terminal/conversa com você mesmo, busca contínua com limites por fonte e envio inicial por formulários Lever compatíveis. Os resultados anteriores abaixo são históricos e não substituem a validação desta versão.

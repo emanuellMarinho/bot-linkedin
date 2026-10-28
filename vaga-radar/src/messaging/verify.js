@@ -17,20 +17,25 @@ export async function verifyWhatsAppRoundTrip(
     pollIntervalMs = 500,
     timeoutMs = 120000,
     output = console.log,
+    poll = async () => {},
   } = {},
 ) {
   const result = (ok, code, questionId, status) => ({ ok, code, questionId, status });
   if (signal?.aborted) return result(false, "CANCELLED", null, "cancelled");
-  const inspected = inspectWhatsAppConfig(config, { env });
+  const sms = config.transport === "sms";
+  const channelName = sms ? "SMS" : "WhatsApp";
+  const inspected = sms
+    ? { ready: config.enabled && /^\d{8,15}$/.test(config.to || "") && typeof sender === "function" }
+    : inspectWhatsAppConfig(config, { env });
   if (!inspected.ready) {
-    output("O teste não foi enviado: a configuração do WhatsApp está incompleta.");
-    return result(false, "WHATSAPP_CONFIGURATION_REQUIRED", null, "blocked");
+    output(`O teste não foi enviado: a configuração do ${channelName} está incompleta.`);
+    return result(false, sms ? "SMS_CONFIGURATION_REQUIRED" : "WHATSAPP_CONFIGURATION_REQUIRED", null, "blocked");
   }
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 600000)
     throw new Error("Tempo limite do teste inválido");
   if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0)
     throw new Error("Intervalo de verificação inválido");
-  const questionId = `WHATSAPP_TEST_${randomUUID()}`;
+  const questionId = `${sms ? "SMS" : "WHATSAPP"}_TEST_${randomUUID()}`;
   askQuestion(db, {
     id: questionId,
     topic: "whatsapp_test",
@@ -49,11 +54,11 @@ export async function verifyWhatsAppRoundTrip(
     const code = signal?.aborted ? "CANCELLED" : "TIMEOUT";
     output(code === "CANCELLED"
       ? "Teste cancelado. A pergunta não será reenviada automaticamente."
-      : "O teste terminou sem receber uma resposta. O funcionamento completo do WhatsApp ainda não foi confirmado.");
+      : `O teste terminou sem receber uma resposta. O funcionamento completo do ${channelName} ainda não foi confirmado.`);
     return result(false, code, questionId, row?.notification_status || "unknown");
   };
   try {
-    output("Enviando uma pergunta de teste ao WhatsApp configurado...");
+    output(`Enviando uma pergunta de teste ao ${channelName} configurado...`);
     const notified = await notifyQuestions(db, config, {
       env,
       ...(sender ? { sender } : {}),
@@ -64,14 +69,15 @@ export async function verifyWhatsAppRoundTrip(
     });
     if (combinedSignal.aborted) return interrupted();
     if (notified.error) {
-      output("A pergunta de teste não foi enviada. Confira a conexão do WhatsApp.");
+      output(`A pergunta de teste não foi enviada. Confira a conexão do ${channelName}.`);
       return result(false, notified.error, questionId, readQuestion().notification_status);
     }
     let previousStatus;
     while (!combinedSignal.aborted) {
+      await poll();
       const row = readQuestion();
       if (row.answer !== null) {
-        output("Resposta recebida pelo WhatsApp. Envio e recebimento confirmados neste teste.");
+        output(`Resposta recebida pelo ${channelName}. Envio e recebimento confirmados neste teste.`);
         return result(true, "VERIFIED", questionId, "answered");
       }
       if (["failed", "ambiguous", "pending"].includes(row.notification_status)) {
@@ -81,10 +87,10 @@ export async function verifyWhatsAppRoundTrip(
       if (row.notification_status !== previousStatus) {
         previousStatus = row.notification_status;
         output(row.notification_status === "delivered"
-          ? "Mensagem entregue. Responda pelo WhatsApp para concluir o teste."
+          ? `Mensagem entregue. Responda pelo ${channelName} para concluir o teste.`
           : row.notification_status === "read"
-            ? "Mensagem lida. Responda pelo WhatsApp para concluir o teste."
-            : "Mensagem aceita para envio. Aguardando sua resposta pelo WhatsApp para confirmar a conexão completa.");
+            ? `Mensagem lida. Responda pelo ${channelName} para concluir o teste.`
+            : `Mensagem aceita para envio. Aguardando sua resposta pelo ${channelName} para confirmar a conexão completa.`);
       }
       try {
         await delay(pollIntervalMs, undefined, { signal: combinedSignal });

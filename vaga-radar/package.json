@@ -1,6 +1,6 @@
 {
   "name": "vaga-radar",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "Bot local de vagas, currículos ATS e dúvidas por WhatsApp",

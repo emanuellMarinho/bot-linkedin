@@ -1,7 +1,7 @@
 // Local dependency smoke check, including modules loaded lazily by the portable
 // executable. It never opens a WhatsApp connection or submits an application.
 export async function runDoctor({ output = console.log } = {}) {
-  const modules = ["@whiskeysockets/baileys", "qrcode-terminal", "playwright-core", "pdfkit", "better-sqlite3"];
+  const modules = ["@whiskeysockets/baileys", "qrcode-terminal", "playwright-core", "pdfkit", "better-sqlite3", "../messaging/sms.js", "../terminal/ui.js"];
   const results = await Promise.allSettled(modules.map((name) => import(name)));
   let ready = true;
   for (let i = 0; i < results.length; i++) {

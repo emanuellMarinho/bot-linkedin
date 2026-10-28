@@ -22,6 +22,9 @@ export async function main(args = process.argv.slice(2)) {
         "check-whatsapp": { type: "boolean" },
         "test-whatsapp": { type: "boolean" },
         doctor: { type: "boolean" },
+        "sms-setup": { type: "boolean" },
+        "check-sms": { type: "boolean" },
+        "test-sms": { type: "boolean" },
       },
     }));
   } catch {
@@ -30,7 +33,7 @@ export async function main(args = process.argv.slice(2)) {
   }
   if (values.help) {
     console.log(
-      "Vaga Radar Bot — assistente no terminal\nUso: VagaRadar.exe [--setup] [--config arquivo.json] [--once | --watch] [--collect-only]\n--connect-whatsapp ativa WhatsApp pessoal e mostra QR code.\n--reset-whatsapp remove somente a sessão local para conectar novamente.\n--check-whatsapp verifica a conexão sem mensagens; --test-whatsapp confirma envio e resposta pelo celular.\n--setup altera dados/chaves; --advanced-setup configura API Cloud/Lever da empresa.\nDigite vagas, candidaturas, vaga ID ou ajuda no terminal ou na conversa com você mesmo.\nBusca contínua durante a janela diária, respeitando limites das fontes. Mantenha o terminal aberto. Ctrl+C encerra.\nCandidaturas: formulários Lever compatíveis ou API autorizada. Envio só é registrado após confirmação da plataforma.\nNo Node: npm start ou npm run bot -- --setup",
+      "Vaga Radar Bot — assistente no terminal\nMenu: 1 vagas, 2 candidaturas, 3 perguntas, 4 ajuda, 0 encerrar.\n--sms-setup configura SMS; --check-sms verifica a conta; --test-sms confirma envio e resposta.\nUso: VagaRadar.exe [--setup] [--config arquivo.json] [--once | --watch] [--collect-only]\n--connect-whatsapp ativa WhatsApp pessoal e mostra QR code.\n--reset-whatsapp remove somente a sessão local para conectar novamente.\n--check-whatsapp verifica a conexão sem mensagens; --test-whatsapp confirma envio e resposta pelo celular.\n--setup altera dados/chaves; --advanced-setup configura API Cloud/Lever da empresa.\nDigite vagas, candidaturas, vaga ID ou ajuda no terminal ou na conversa com você mesmo.\nBusca contínua durante a janela diária, respeitando limites das fontes. Mantenha o terminal aberto. Ctrl+C encerra.\nCandidaturas: formulários Lever compatíveis ou API autorizada. Envio só é registrado após confirmação da plataforma.\nNo Node: npm start ou npm run bot -- --setup",
     );
     return 0;
   }
@@ -47,7 +50,11 @@ export async function main(args = process.argv.slice(2)) {
     values.config || path.join(base, "bot.config.json"),
   );
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  const diagnostic = values["check-whatsapp"] || values["test-whatsapp"];
+  const diagnostic = values["check-whatsapp"] || values["test-whatsapp"] || values["check-sms"] || values["test-sms"];
+  const smsDiagnostic = values["check-sms"] || values["test-sms"];
+  if (["check-whatsapp", "test-whatsapp", "check-sms", "test-sms"].filter((key) => values[key]).length > 1) {
+    console.error("Execute apenas um teste de canal por vez."); return 2;
+  }
   if ((values["check-whatsapp"] && values["test-whatsapp"]) ||
       (diagnostic && (values.once || values.watch || values["collect-only"] || values["whatsapp-webhook"]))) {
     console.error("Execute o diagnóstico WhatsApp separadamente dos ciclos de busca.");
@@ -64,6 +71,7 @@ export async function main(args = process.argv.slice(2)) {
   if (
     interactive &&
     !diagnostic &&
+    !values["sms-setup"] &&
     !values["connect-whatsapp"] &&
     !values["reset-whatsapp"] &&
     !values.once &&
@@ -80,7 +88,7 @@ export async function main(args = process.argv.slice(2)) {
       /* O erro de arquivo será apresentado na validação. */
     }
   }
-  if ((values.setup || values["advanced-setup"]) && !interactive) {
+  if ((values.setup || values["advanced-setup"] || values["sms-setup"]) && !interactive) {
     console.error(
       "O assistente precisa de um terminal interativo. Abra o .exe ou execute --setup no seu terminal.",
     );
@@ -160,16 +168,16 @@ export async function main(args = process.argv.slice(2)) {
     }
   }
   const { inWorkWindow } = await import("./bot/schedule.js");
+  const { createTerminalUI } = await import("./terminal/ui.js");
+  const { createTerminalPrompt } = await import("./terminal/prompts.js");
+  const ui = interactive ? createTerminalUI() : {
+    header() {}, step() {}, status() {}, success() {}, summary() {}, menu() {},
+    info: diagnostic ? console.log : () => {}, error: console.error, raw: console.log,
+    withExclusive: (action) => action(), suspend: () => () => {},
+  };
   const controller = new AbortController();
-  let db,
-    collector,
-    release,
-    stopping = false,
-    timer,
-    wake;
-  let webhook;
-  let personal;
-  let terminalAnswers;
+  let db, collector, release, messaging, terminalAnswers;
+  let stopping = false, timer, wake;
   const stop = () => {
     stopping = true;
     controller.abort();
@@ -180,16 +188,26 @@ export async function main(args = process.argv.slice(2)) {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   try {
+    ui.header("VAGA RADAR", "Uma etapa por vez. Mantenha esta janela aberta.");
+    ui.step(1, 4, "Conferir seus dados");
     let config = readBotConfig(filename);
     applyLocalCredentials(config);
     release = acquireBotLock(config.dataDir);
+    const promptFactory = () => createTerminalPrompt();
+    async function configureSms(current) {
+      const { runSmsSetup } = await import("./bot/sms-setup.js");
+      const prompt = promptFactory();
+      const resumeOutput = ui.suspend();
+      try {
+        const updated = await runSmsSetup({ filename, config: current, prompt });
+        applyLocalCredentials(updated);
+        return updated;
+      } finally { prompt.close(); resumeOutput(); }
+    }
+    if (values["sms-setup"]) config = await configureSms(config);
     if (values["connect-whatsapp"] || values["reset-whatsapp"]) {
       const { connectPersonalWhatsApp } = await import("./bot/connect-whatsapp.js");
-      let prompt;
-      if (interactive) {
-        const { createTerminalPrompt } = await import("./terminal/prompts.js");
-        prompt = createTerminalPrompt();
-      }
+      const prompt = interactive ? promptFactory() : undefined;
       try { await connectPersonalWhatsApp(filename, { prompt }); }
       finally { prompt?.close(); }
       config = readBotConfig(filename);
@@ -199,191 +217,162 @@ export async function main(args = process.argv.slice(2)) {
         resetPersonalWhatsAppSession({ dataDir: config.dataDir });
       }
     }
-    const connectionConfig = JSON.stringify([config.whatsapp, config.credentials?.whatsappAccessToken, config.credentials?.whatsappVerifyToken, config.credentials?.metaAppSecret, config.search]);
     db = openDatabase(path.join(config.dataDir, "radar.sqlite"));
     recoverInterruptedSubmissions(db);
-    const store = createStore(db),
-      logger = {
-        warn() {
-          console.error("Uma fonte falhou; consulte reports/latest.json.");
-        },
-      };
-    collector = createCollector(store, { logger, autoScheduleEnabled: false, continuous: config.search.continuous });
+    const store = createStore(db);
     const { formatTracking } = await import("./bot/tracking.js");
-    const { acceptWhatsAppAnswer, recordWhatsAppStatus } = await import("./bot/questions.js");
-    if (config.whatsapp.enabled && config.whatsapp.transport === "personal" && !values["collect-only"]) {
-      const { startPersonalWhatsApp } = await import("./messaging/personal.js");
-      personal = await startPersonalWhatsApp({
-        dataDir: config.dataDir, to: config.whatsapp.to, signal: controller.signal,
-        onAnswer: (input) => acceptWhatsAppAnswer(db, input),
-        onStatus: (input) => recordWhatsAppStatus(db, input),
+    const { prepareMessaging, notificationConfigFor } = await import("./bot/startup.js");
+    ui.success("Configuracao carregada. Seus arquivos pessoais foram preservados.");
+    if (diagnostic) config = { ...config, notifications: { channel: smsDiagnostic ? "sms" : "whatsapp", requireConnection: true } };
+    if (!values["collect-only"]) {
+      messaging = await prepareMessaging({
+        config, db, signal: controller.signal, ui, interactive: interactive && !diagnostic,
+        promptFactory, configureSms,
+        useTerminal: async () => {
+          const { selectTerminalNotifications } = await import("./bot/connect-whatsapp.js");
+          selectTerminalNotifications(filename);
+          ui.info("O canal terminal foi salvo para os proximos inicios. Voce pode mudar pelo assistente --setup.");
+          return readBotConfig(filename);
+        },
         onCommand: (command) => formatTracking(db, command),
       });
-    }
-    if (config.whatsapp.enabled && config.whatsapp.transport === "cloud" && config.whatsapp.autoStartWebhook) {
-      const { startWhatsAppServer } = await import("./whatsapp-server.js");
-      webhook = await startWhatsAppServer({ dataDir: config.dataDir, whatsapp: config.whatsapp });
+      if (!messaging.ready) {
+        if (diagnostic && !smsDiagnostic) console.error("Use --connect-whatsapp ou --setup para configurar o canal.");
+        return stopping ? 0 : 2;
+      }
+      config = messaging.config;
+    } else {
+      ui.step(2, 4, "Coleta isolada", "Nenhuma mensagem ou candidatura sera enviada.");
+      messaging = { ready: true, channel: "terminal", notificationConfig: notificationConfigFor(config, "terminal"),
+        getState: () => ({ ready: true, state: "terminal" }), poll: async () => {}, close: async () => {} };
     }
     if (diagnostic) {
-      const { inspectWhatsAppConfig, checkWhatsAppConnection } = await import("./messaging/diagnostics.js");
-      const inspected = inspectWhatsAppConfig(config.whatsapp);
-      if (!inspected.ready) {
-        for (const issue of inspected.issues) console.error(issue.message);
-        console.error("Use --connect-whatsapp para conectar sua conta pessoal por QR code.");
-        return 2;
-      }
-      if (personal) {
-        console.log("Aguardando conexão WhatsApp. Leia o QR code se for solicitado. Ctrl+C cancela.");
-        if (!await personal.waitUntilReady({ signal: controller.signal })) return 2;
-      } else {
-        const checked = await checkWhatsAppConnection(config.whatsapp, { signal: controller.signal });
-        if (!checked.ready) {
-          for (const issue of checked.issues) console.error(issue.message);
-          return 2;
-        }
-      }
-      if (values["check-whatsapp"]) {
-        console.log("Conexão autenticada. Para confirmar envio e recebimento, execute --test-whatsapp.");
+      if (values["check-whatsapp"] || values["check-sms"]) {
+        ui.success("Canal autenticado. Use o teste de envio e resposta para confirmar que as mensagens chegam ao celular.");
+        if (!interactive) console.log("Canal autenticado; entrega e resposta ainda nao verificadas.");
         return 0;
       }
       const { verifyWhatsAppRoundTrip } = await import("./messaging/verify.js");
-      const result = await verifyWhatsAppRoundTrip(db, config.whatsapp, {
-        signal: controller.signal, ...(personal ? { sender: personal.sendQuestion } : {}),
+      const result = await verifyWhatsAppRoundTrip(db, messaging.notificationConfig, {
+        signal: controller.signal, sender: messaging.questionSender, poll: messaging.poll,
+        output: (message) => interactive ? ui.info(message) : console.log(message),
       });
       return result.ok ? 0 : 2;
     }
+    // A fallback is an explicit session choice; keep the persisted preference
+    // for next start and detect real file changes independently.
+    const connectionSignature = (value) => JSON.stringify([
+      value.whatsapp, value.sms, value.notifications, value.credentials?.whatsappAccessToken,
+      value.credentials?.whatsappVerifyToken, value.credentials?.metaAppSecret,
+      value.credentials?.twilioAccountSid, value.credentials?.twilioAuthToken, value.search,
+    ]);
+    const initialSignature = connectionSignature(readBotConfig(filename));
+    ui.step(3, 4, "Preparar a rotina");
+    applyBotConfig(store, config);
+    collector = createCollector(store, {
+      logger: { warn: () => ui.error("Uma fonte esta indisponivel. As demais continuam; consulte o acompanhamento.") },
+      autoScheduleEnabled: false, continuous: config.search.continuous,
+    });
+    ui.status("Horario", config.workWindow.enabled
+      ? `${config.workWindow.startHour}h, ${config.workWindow.hours} horas por dia (${config.workWindow.timeZone})`
+      : "Sem restricao de horario");
+    ui.status("Avisos", messaging.channel === "sms" ? "SMS" : messaging.channel === "whatsapp" ? "WhatsApp" : "Terminal");
+    ui.step(4, 4, "Pronto para trabalhar");
+    ui.success("Preparacao concluida. A busca pode comecar.");
     if (interactive) {
-      console.log(
-        "\nVaga Radar em execução. Mantenha esta janela aberta. Ctrl+C encerra com segurança.",
-      );
-      console.log(
-        `Rotina: ${config.workWindow.startHour}h, ${config.workWindow.hours} horas/dia (${config.workWindow.timeZone}).`,
-      );
-      console.log(
-        `GPT: ${config.ai.enabled ? "configurado" : "desativado"} | WhatsApp: ${config.whatsapp.enabled ? (personal ? "pessoal; confira o QR/conexão acima" : "Cloud; depende de webhook/template Meta") : "desativado"}`,
-      );
+      ui.menu();
       const { startTerminalAnswers } = await import("./terminal/answers.js");
-      terminalAnswers = startTerminalAnswers(db, { onStop: stop, onCommand: (command) => formatTracking(db, command) });
+      terminalAnswers = startTerminalAnswers(db, {
+        ui, onStop: stop,
+        onCommand: (command) => formatTracking(db, command),
+      });
     }
-    const shownQuestions = new Set();
-    let lastRun = 0,
-      lastConfig = 0,
-      lastAnswers = 0,
-      outsideReported = false;
+    let lastRun = 0, lastConfig = fs.statSync(filename).mtimeMs, lastAnswers = 0;
+    let outsideReported = false, offlineReported = false, shownQuestions = "";
+    const progressLabels = {
+      collection: "Buscando vagas", resume: "Lendo curriculo", job: "Analisando oportunidade",
+      analysis: "Consultando GPT", preparation: "Preparando curriculo ATS", application: "Conferindo candidatura",
+      submission: "Preenchendo e enviando candidatura", notifications: "Encaminhando perguntas",
+    };
+    let lastProgress;
     do {
       const current = readBotConfig(filename);
-      if (current.dataDir !== config.dataDir)
-        throw new Error("Encerre o bot antes de alterar dataDir");
-      if (JSON.stringify([current.whatsapp, current.credentials?.whatsappAccessToken, current.credentials?.whatsappVerifyToken, current.credentials?.metaAppSecret, current.search]) !== connectionConfig)
-        throw Object.assign(new Error("Reinicie para aplicar alterações do WhatsApp ou da busca."), { code: "RESTART_REQUIRED" });
+      if (current.dataDir !== config.dataDir || connectionSignature(current) !== initialSignature)
+        throw Object.assign(new Error("Configuracao alterada. Reinicie o aplicativo para aplicar o novo canal ou a busca."), { code: "RESTART_REQUIRED" });
       config = current;
       applyLocalCredentials(config);
       const modified = fs.statSync(filename).mtimeMs;
-      if (modified !== lastConfig) {
-        applyBotConfig(store, config);
-        lastConfig = modified;
-      }
+      if (modified !== lastConfig) { applyBotConfig(store, config); lastConfig = modified; }
       const prefs = store.getSettings();
       const within = inWorkWindow(config.workWindow);
-      const answerCount = db
-        .prepare("SELECT COUNT(*) AS n FROM whatsapp_inbound_messages")
-        .get().n;
+      const online = messaging.getState().ready;
+      const answerCount = db.prepare("SELECT COUNT(*) AS n FROM whatsapp_inbound_messages").get().n;
       const answered = answerCount !== lastAnswers;
       lastAnswers = answerCount;
+      if (!online && !offlineReported) {
+        ui.error("O canal perdeu a conexao. A rotina aguarda a reconexao; perguntas e dados continuam salvos. Para usar outro canal, encerre com 0 e abra --setup.");
+        offlineReported = true;
+      }
+      if (online && offlineReported) { ui.success("Canal reconectado. A rotina pode continuar."); offlineReported = false; }
+      if (!online && !values.watch) return 2;
       if (!within && !outsideReported) {
-        console.log(
-          interactive
-            ? `Fora do horário de trabalho. Aguardando ${config.workWindow.startHour}h (${config.workWindow.timeZone}). A janela deve continuar aberta.`
-            : JSON.stringify({
-                state: "outside_work_window",
-                startHour: config.workWindow.startHour,
-                hours: config.workWindow.hours,
-                timeZone: config.workWindow.timeZone,
-              }),
-        );
-
+        if (interactive) ui.info(`Fora do horario. Aguardando ${config.workWindow.startHour}h (${config.workWindow.timeZone}). O menu continua disponivel.`);
+        else console.log(JSON.stringify({ state: "outside_work_window", startHour: config.workWindow.startHour, hours: config.workWindow.hours, timeZone: config.workWindow.timeZone }));
         outsideReported = true;
       }
       if (!within && !values.watch) return 0;
-      if (
-        within &&
-        ((config.search.continuous && Date.parse(collector.nextCheckAt || 0) <= Date.now()) || !lastRun ||
-          answered ||
-          Date.now() - lastRun >= prefs.intervalHours * 36e5)
-      ) {
+      const due = config.search.continuous ? Date.parse(collector.nextCheckAt || 0) <= Date.now() : Date.now() - lastRun >= prefs.intervalHours * 36e5;
+      let ran = false;
+      if (within && online && (!lastRun || answered || due)) {
         outsideReported = false;
+        lastProgress = undefined;
         const result = await runBotCycle(store, collector, config, {
-          collectOnly: Boolean(values["collect-only"]),
-          skipCollection: Boolean(lastRun && answered),
-          signal: controller.signal,
-          ...(personal ? { questionSender: personal.sendQuestion } : {}),
+          collectOnly: Boolean(values["collect-only"]), skipCollection: Boolean(lastRun && answered),
+          signal: controller.signal, questionSender: messaging.questionSender,
+          notificationConfig: messaging.notificationConfig,
+          onProgress: interactive ? async (event) => {
+            if (controller.signal.aborted || !progressLabels[event.stage] || event.status !== "running") return;
+            const message = progressLabels[event.stage];
+            if (message !== lastProgress) { ui.status("Agora", message); lastProgress = message; }
+          } : undefined,
         });
+        ran = true;
         if (!answered || !lastRun) lastRun = Date.now();
-        console.log(
-          interactive
-            ? `Ciclo concluído: ${result.collection.received} recebidas, ${result.prepared} preparadas, ${result.submitted} enviadas, ${result.pending.length} pendências. ${config.search.continuous ? "Busca contínua ativa." : `Próxima busca em até ${prefs.intervalHours}h.`} Ctrl+C para encerrar.`
-            : JSON.stringify({
-                collection: result.collection.status,
-                received: result.collection.received,
-                prepared: result.prepared,
-                submitted: result.submitted,
-                pending: result.pending.length,
-              }),
-        );
-        if (!values.watch)
-          return ["partial", "failed"].includes(result.collection.status)
-            ? 1
-            : 0;
+        if (interactive) ui.summary({ ...result, next: result.collection.status === "paused"
+          ? "A busca esta pausada nas preferencias. O menu continua disponivel."
+          : config.search.continuous ? "Consultar as fontes assim que estiverem disponiveis." : "Aguardar o proximo horario de busca." });
+        else console.log(JSON.stringify({ collection: result.collection.status, received: result.collection.received, prepared: result.prepared, submitted: result.submitted, pending: result.pending.length }));
+        if (!values.watch) return ["partial", "failed"].includes(result.collection.status) ? 1 : 0;
       }
-      if (within && !values["collect-only"] && !controller.signal.aborted) {
-        const { notifyQuestions } = await import("./bot/questions.js");
-        await notifyQuestions(db, config.whatsapp, {
-          signal: controller.signal, ...(personal ? { sender: personal.sendQuestion } : {}),
-        });
+      if (online && !values["collect-only"] && !controller.signal.aborted) {
+        // Polling and notifications use the same ordered loop as the job cycle.
+        await messaging.poll();
+        if (within && !ran) {
+          const { notifyQuestions } = await import("./bot/questions.js");
+          await notifyQuestions(db, messaging.notificationConfig, {
+            signal: controller.signal, ...(messaging.questionSender ? { sender: messaging.questionSender } : {}),
+          });
+        }
       }
       if (interactive) {
-        const pending = db
-          .prepare(
-            "SELECT id,text FROM bot_questions WHERE answer IS NULL AND topic!='whatsapp_test' ORDER BY created_at LIMIT 5",
-          )
-          .all();
-        for (const question of pending)
-          if (!shownQuestions.has(question.id)) {
-            shownQuestions.add(question.id);
-            console.log(
-              `Dúvida ${question.id}: ${question.text.replace(/[\u0000-\u001f\u007f]/g, " ")}`,
-            );
-            console.log(`Responda aqui com ${question.id}: sua resposta`);
-          }
+        const ids = db.prepare("SELECT id FROM bot_questions WHERE answer IS NULL AND topic<>'whatsapp_test' ORDER BY created_at,id LIMIT 10").all().map((row) => row.id).join("|");
+        if (ids && ids !== shownQuestions) terminalAnswers.showQuestions();
+        shownQuestions = ids;
       }
-      if (!stopping)
-        await new Promise((resolve) => {
-          wake = resolve;
-          timer = setTimeout(resolve, 10000);
-        });
+      if (!stopping) await new Promise((resolve) => { wake = resolve; timer = setTimeout(resolve, 5000); });
     } while (!stopping);
     return 0;
   } catch (error) {
-    if (error.name === "ZodError" || error instanceof SyntaxError)
-      console.error(
-        "Configuração inválida. Confira o formato e os campos de bot.config.json.",
-      );
-    else if (error.code === "ENOENT")
-      console.error(
-        "Arquivo local não encontrado. Confira os caminhos da configuração.",
-      );
-    else if (error.code === "RESTART_REQUIRED" || error.code === "RECIPIENT_REQUIRED")
-      console.error(error.message);
-    else
-      console.error(
-        "Não foi possível executar o bot. Confira a configuração, as permissões locais e se já existe um bot ativo.",
-      );
+    if (error.code === "SETUP_CANCELLED") { ui.info("Acao cancelada. Seus dados anteriores foram preservados."); return 130; }
+    if (error.name === "ZodError" || error instanceof SyntaxError) ui.error("Configuracao invalida. Abra --setup para conferir os dados.");
+    else if (error.code === "ENOENT") ui.error("Arquivo local nao encontrado. Confira o caminho do curriculo na configuracao.");
+    else if (["RESTART_REQUIRED", "RECIPIENT_REQUIRED"].includes(error.code)) ui.error(error.message);
+    else ui.error("Nao foi possivel concluir esta etapa. Confira se o aplicativo ja esta aberto e se a pasta permite gravacao.");
     return 2;
   } finally {
     terminalAnswers?.close();
     collector?.stop();
-    if (personal) await personal.close();
-    if (webhook) await webhook.close();
+    if (messaging) await messaging.close();
     db?.close();
     release?.();
     process.off("SIGINT", stop);

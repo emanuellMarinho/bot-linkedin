@@ -16,6 +16,23 @@ export async function connectPersonalWhatsApp(filename, { prompt } = {}) {
     if (!/^\d{8,15}$/.test(to)) throw new Error("Número inválido");
   }
   raw.whatsapp = { ...raw.whatsapp, enabled: true, transport: "personal", to, autoStartWebhook: false };
+  raw.notifications = { channel: "whatsapp", requireConnection: true };
+  if (raw.sms) raw.sms.enabled = false;
+  const temporary = path.resolve(filename) + "." + randomUUID() + ".tmp";
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(raw, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    fs.renameSync(temporary, filename);
+    fs.chmodSync(filename, 0o600);
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
+}
+
+export function selectTerminalNotifications(filename) {
+  const raw = JSON.parse(fs.readFileSync(filename, "utf8").replace(/^\uFEFF/, ""));
+  raw.notifications = { channel: "terminal", requireConnection: true };
+  raw.whatsapp = { ...raw.whatsapp, enabled: false, autoStartWebhook: false };
+  if (raw.sms) raw.sms.enabled = false;
   const temporary = path.resolve(filename) + "." + randomUUID() + ".tmp";
   try {
     fs.writeFileSync(temporary, JSON.stringify(raw, null, 2) + "\n", { mode: 0o600, flag: "wx" });

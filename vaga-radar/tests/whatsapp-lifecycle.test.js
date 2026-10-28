@@ -20,6 +20,20 @@ const config = {
 };
 const env = { TEST_TOKEN: "TEST_NOT_REAL" };
 const receipt = { verified: true, messageId: "wamid.test-delivery" };
+
+test("credencial SMS corrigida desbloqueia rejeição definitiva sem trocar o número", async (t) => {
+  const db = openDatabase(":memory:");
+  t.after(() => db.close());
+  askQuestion(db, { id: "SMS_EMAIL", topic: "email", text: "Qual e-mail?" });
+  const sms = { transport: "sms", enabled: true, to: "5511999990000", from: "+15550000001", accessTokenEnv: "TEST_SMS_AUTH", accountIdEnv: "TEST_SMS_SID" };
+  const smsEnv = { TEST_SMS_AUTH: "SYNTHETIC_OLD", TEST_SMS_SID: "SYNTHETIC_ACCOUNT" };
+  await notifyQuestions(db, sms, { env: smsEnv, sender: async () => { throw Object.assign(new Error("Auth denied"), { code: "AUTHORIZATION" }); } });
+  assert.equal(db.prepare("SELECT notification_status FROM bot_questions").get().notification_status, "failed");
+  smsEnv.TEST_SMS_AUTH = "SYNTHETIC_CORRECTED";
+  const result = await notifyQuestions(db, sms, { env: smsEnv, sender: async () => ({ verified: true, messageId: "sms:SM_SYNTHETIC_RECEIPT" }) });
+  assert.equal(result.acceptedThisRun, 1);
+  assert.equal(db.prepare("SELECT notification_status FROM bot_questions").get().notification_status, "accepted");
+});
 const fixture = (t, id = "EMAIL", topic = "email") => {
   const db = openDatabase(":memory:");
   t.after(() => db.close());

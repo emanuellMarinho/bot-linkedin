@@ -1,95 +1,111 @@
 # Vaga Radar Bot
 
-Bot de terminal para ler seu currículo, buscar vagas em fontes públicas, preparar versões PDF/TXT para ATS e acompanhar candidaturas. O fluxo principal conecta seu **WhatsApp pessoal por QR code** e envia as dúvidas na conversa com você mesmo. GPT é opcional.
+Aplicativo de terminal para procurar vagas, preparar currículos ATS e acompanhar candidaturas. A configuração acontece por etapas, com uma ação de cada vez. As dúvidas chegam pelo canal escolhido: **WhatsApp, SMS ou o próprio terminal**. GPT é opcional.
 
-A busca é contínua durante a janela de trabalho, inicialmente **08h–20h, America/Sao_Paulo (12 horas)**. Ao terminar uma rodada, o bot consulta as fontes disponíveis novamente. Cada fonte tem um limite técnico mínimo de 30 segundos, com espera maior quando a plataforma solicita ou apresenta erros. Não há mais uma pausa fixa de uma hora entre rodadas.
+## Começar no Windows
 
-## Primeiro uso no Windows
+1. Baixe **VagaRadar-Windows-x64** no [workflow Windows bot](https://github.com/emanuellMarinho/bot-linkedin/actions/workflows/windows-bot.yml), pela seção **Artifacts** de uma execução concluída com sucesso. O GitHub exige login para baixar.
+2. Extraia tudo. Mantenha **`VagaRadar.exe` e `app/` juntos**; o runtime Node está incluído.
+3. Abra `VagaRadar.exe` e siga as sete etapas: perfil, currículo, rotina, canal de avisos, GPT, candidaturas e revisão final.
+4. Aguarde a validação do currículo e a conclusão da conexão escolhida. O bot apresenta o resultado de cada etapa antes de avançar.
+5. Quando o menu aparecer, acompanhe as vagas na mesma janela. Mantenha o terminal aberto; **0** ou **Ctrl+C** encerra.
 
-1. Baixe o artefato **VagaRadar-Windows-x64** no [build validado da versão 2.2](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40615734776), na seção **Artifacts**; o GitHub exige login para baixar.
-2. Extraia o pacote inteiro, mantendo **`VagaRadar.exe` e `app/` juntos**. O runtime Node está incluído.
-3. Abra `VagaRadar.exe`. Informe nome, e-mail, caminho do currículo, habilidades, número pessoal com país/DDD, horário e opções do bot. O assistente salva tudo em `bot.config.json` e copia o currículo para a pasta privada.
-4. No celular, abra **WhatsApp → Aparelhos conectados → Conectar aparelho** e leia o QR code mostrado no terminal com a conta do número informado.
-5. Mantenha o terminal aberto. Use **Ctrl+C** para encerrar.
-
-A sessão WhatsApp é salva em `data/whatsapp-session/` e reutilizada no próximo início. O bot exige que a conta conectada corresponda ao número configurado. Não é necessário WhatsApp Business, token Meta, template ou webhook no modo pessoal. Esse modo usa um dispositivo vinculado por Baileys; mudanças no WhatsApp podem exigir atualização do conector ou novo pareamento.
-
-Para atualizar uma configuração antiga que apenas guardava seu número:
+Para reorganizar uma configuração existente, execute:
 
 ```powershell
-.\VagaRadar.exe --connect-whatsapp
+.\VagaRadar.exe --setup
 ```
 
-Outros comandos:
+O assistente mostra um resumo antes de salvar. Enter mantém valores anteriores quando há um padrão; chaves são digitadas sem aparecer. Cancelar antes da confirmação preserva a configuração anterior. O currículo é validado e copiado para a pasta privada, mantendo o original.
+
+## Escolher onde receber as perguntas
+
+| Canal | O que precisa | Como responder |
+| --- | --- | --- |
+| WhatsApp pessoal | Ler o QR com a conta do número informado | Usar **Responder** na pergunta ou `ID: resposta`, na conversa consigo mesmo |
+| SMS | Conta Twilio, credenciais e número remetente habilitado para SMS | Responder por SMS no formato `ID: resposta` |
+| Terminal | Apenas manter a janela aberta | Escolher **3** e digitar o número da pergunta com a resposta |
+
+A conexão é uma etapa anterior à busca. O aplicativo aguarda o WhatsApp ou valida o serviço SMS antes de começar as consultas. Se o canal falhar, apresenta opções para tentar novamente, configurar SMS, continuar pelo terminal ou encerrar. Escolher o terminal permite usar o bot enquanto o canal externo é resolvido; isso não é anunciado como WhatsApp ou SMS conectado.
+
+### WhatsApp pessoal
+
+No celular, abra **WhatsApp → Aparelhos conectados → Conectar aparelho** e leia o QR exibido no terminal. Durante o pareamento, o QR fica separado das mensagens da rotina. Aguarde a confirmação da conta antes da próxima etapa.
+
+As perguntas chegam na **conversa com você mesmo**. A sessão fica em `data/whatsapp-session/` e é reutilizada. O número conectado precisa corresponder ao configurado. O modo pessoal usa Baileys como dispositivo vinculado e pode precisar de atualização ou novo pareamento quando o WhatsApp mudar.
+
+### SMS
+
+O SMS dispensa QR code e webhook público. Ele usa o serviço **Twilio**, que exige:
+
+- Conta ativa, Account SID e Auth Token.
+- Número remetente da conta habilitado para SMS e compatível com o destino.
+- Seu número de celular com país e DDD, no formato internacional, por exemplo `+5511999999999`.
+
+O assistente pede esses dados localmente e salva as credenciais no JSON privado. **Informar somente o celular não cria um serviço de envio.** Mensagens podem ter custo; contas de teste, números e permissões geográficas seguem as regras da conta Twilio.
+
+A validação inicial consulta a conta e o número remetente, sem enviar mensagem. Para confirmar entrega e resposta de verdade, use o teste explícito. O bot consulta as respostas recebidas pelo serviço; não precisa abrir uma porta na internet no seu computador.
+
+## Menu e acompanhamento
+
+```text
+1  Ver vagas
+2  Ver candidaturas
+3  Responder perguntas
+4  Ajuda
+0  Encerrar
+
+Comando >
+```
+
+Em **3**, cada pergunta recebe um número curto. Digite, por exemplo, `1: minha resposta`. Os IDs anteriores continuam aceitos. Cada comando termina antes de o próximo ser executado, e atualizações da rotina preservam uma resposta que você esteja digitando.
+
+Também é possível digitar `vagas`, `candidaturas`, `vaga 12` e `ajuda`. A visão mostra empresa, compatibilidade, situação, link e pendências. Esses comandos também funcionam na conversa WhatsApp autenticada. SMS aceita respostas identificadas às perguntas.
+
+Nome, e-mail, salário, autorização de trabalho e consentimentos ausentes são consultados conforme a candidatura precisar. Uma pergunta específica pausa aquela vaga; a resposta validada permite retomar durante o horário de trabalho. Informações importantes não são inventadas pelo bot.
+
+## Rotina e candidaturas
+
+A busca é contínua durante a janela configurada, inicialmente **08h–20h, America/Sao_Paulo (12 horas)**. Cada fonte respeita um limite técnico mínimo de 30 segundos, com espera adicional para erros ou limites da plataforma. Não há espera fixa de uma hora entre rodadas. O computador e o processo precisam permanecer ligados.
+
+O envio automático tem suporte inicial aos formulários públicos **Lever em `jobs.lever.co`**, com Edge/Chrome no Windows ou Chromium em `CHROMIUM_PATH` no Linux. Ative o envio no assistente. Campos conhecidos usam os dados confirmados e o currículo preparado; campos obrigatórios desconhecidos geram perguntas. CAPTCHA, login e controles incompatíveis ficam pendentes para revisão.
+
+Uma tentativa por rodada e três por 24 horas são os limites padrão. Um envio só é confirmado com evidência apresentada pela plataforma. Resultado ambíguo não é repetido automaticamente. Greenhouse e Ashby são fontes de consulta; outros sites ainda precisam de um conector próprio para envio. Não há candidatura universal em qualquer plataforma.
+
+A integração Lever API anterior permanece disponível no modo `autoApply.mode: "api"`, mediante chave da integração autorizada da empresa contratante. Essa chave não vem do login normal de candidato. O modo de navegador usa `autoApply.mode: "browser"` e não exige chave da empresa.
+
+## Currículo e GPT
+
+Informe PDF com texto extraível ou TXT UTF-8, até 2 MB. PDF escaneado precisa de OCR prévio. O bot gera versões PDF/TXT por vaga, preserva os fatos do original e destaca habilidades confirmadas e evidenciadas. A apresentação é adequada à leitura automática, mas **não garante aprovação ou nota de ATS**.
+
+GPT é opcional. Quando habilitado com sua chave/modelo, recebe texto do currículo, vaga e habilidades confirmadas pela API OpenAI, com cobrança da sua conta. O bot usa Responses API com `store:false`, limite de saída e timeout. O modelo sugere organização e dúvidas; dados pessoais desconhecidos continuam dependendo de você. Sem GPT, a preparação determinística permanece disponível.
+
+## Comandos de configuração e teste
+
+Encerre uma execução antes de abrir outra no mesmo diretório de dados.
 
 ```powershell
-.\VagaRadar.exe --setup            # Alterar dados e chaves
-.\VagaRadar.exe --reset-whatsapp   # Apagar a sessão local do bot e gerar novo QR
-.\VagaRadar.exe --check-whatsapp   # Diagnosticar configuração/conexão sem enviar mensagem
-.\VagaRadar.exe --test-whatsapp    # Enviar um teste e aguardar sua resposta
+.\VagaRadar.exe --setup            # Reconfigurar pelo assistente
+.\VagaRadar.exe --sms-setup        # Configurar somente SMS
+.\VagaRadar.exe --check-sms        # Validar conta/número SMS sem enviar
+.\VagaRadar.exe --test-sms         # Enviar teste e aguardar resposta por SMS
+.\VagaRadar.exe --connect-whatsapp # Ativar pareamento pessoal em configuração antiga
+.\VagaRadar.exe --reset-whatsapp   # Remover a sessão local do bot e gerar novo QR
+.\VagaRadar.exe --check-whatsapp   # Verificar conexão sem mensagem
+.\VagaRadar.exe --test-whatsapp    # Enviar teste e aguardar resposta pelo WhatsApp
 ```
 
-O teste de WhatsApp só confirma o fluxo completo após receber sua resposta. Aceitação pelo transporte, entrega e leitura são estados diferentes; uma mensagem aceita não é apresentada como resposta recebida. Se o celular desconectar a sessão, o bot informa a situação e mantém as perguntas no banco.
+Os testes de mensagens só confirmam o fluxo completo após uma resposta recebida pelo canal. Aceitação do serviço não equivale a entrega ou resposta. Sem credenciais, o SMS é apresentado como pendente; nenhum sucesso é inventado.
 
-Pressionar Enter no assistente mantém o valor anterior. Chaves ficam ocultas durante a digitação. Ctrl+C cancela a configuração sem substituir o JSON anterior. Dados e chaves ficam em **JSON local privado, sem criptografia**; não compartilhe `bot.config.json`, `.env`, `data/` nem a sessão WhatsApp.
+## Dados e configuração
 
-## Acompanhar vagas e responder dúvidas
+`bot.config.json`, `.env`, `data/` e a sessão WhatsApp são privados. As chaves digitadas ficam no **JSON local, sem criptografia**, com permissões restritas quando o sistema permite. Não compartilhe esses arquivos nem envie chaves pelo chat. Nenhum segredo é distribuído no pacote Windows.
 
-Digite os mesmos comandos no terminal ou na conversa com você mesmo no WhatsApp:
+Os caminhos relativos usam a pasta do arquivo de configuração. O bot mantém currículo, banco, perguntas e relatórios em `dataDir`; apenas uma execução por diretório é permitida. Faça backup com o aplicativo encerrado.
 
-| Comando | Resultado |
-| --- | --- |
-| `vagas` | Até dez oportunidades mais compatíveis, com ID, empresa, pontuação e situação |
-| `candidaturas` | Candidaturas recentes, envios confirmados e pendências |
-| `vaga 12` | Detalhes, link e dúvidas pendentes da vaga de ID 12 |
-| `ajuda` | Lista dos comandos disponíveis |
+Campos principais: `notifications.channel` escolhe `whatsapp`, `sms` ou `terminal`; `sms` configura o serviço de mensagens; `search.continuous` ativa busca contínua; `workWindow` define início/duração/fuso; `sources` lista quadros públicos; `autoApply` controla permissões e limites. Configure 24 horas na rotina se desejar trabalho durante todo o dia.
 
-Para responder uma dúvida pelo WhatsApp, use **Responder** na mensagem da pergunta, ou envie `ID_DA_PERGUNTA: sua resposta`. No terminal, use esse mesmo formato com ID. E-mails, respostas `sim`/`não` e opções de formulário são validados antes de persistir. Respostas duplicadas não substituem os dados já confirmados.
-
-O bot usa os dados do currículo e do perfil para preencher campos conhecidos. Informações importantes ausentes — como autorização de trabalho, pretensão salarial ou consentimentos exigidos — são perguntadas ao candidato. Uma pergunta específica pausa aquela candidatura; as demais vagas continuam sendo processadas. Respostas ficam no banco e permitem retomar durante o horário de trabalho.
-
-## Currículo, GPT e ATS
-
-Informe PDF com texto extraível ou TXT UTF-8, até 2 MB. PDF escaneado precisa de OCR antes do uso. O bot preserva o arquivo original e gera versões por vaga em `data/tailored/`, além do pacote em `data/outbox/`.
-
-O currículo ATS usa uma coluna e texto pesquisável, destaca habilidades confirmadas e evidenciadas no currículo e preserva os fatos fornecidos. Não cria cargos, empresas, datas, certificações ou experiência. A adaptação melhora a apresentação para leitura automática; **não garante aprovação nem pontuação de ATS**.
-
-GPT pode ser ativado no assistente, com sua chave e modelo, ou por `VAGA_OPENAI_KEY`. A opção envia texto do currículo, vaga e habilidades confirmadas à API OpenAI, com cobrança da sua conta. O bot usa Responses API com `store:false`, limite de saída e timeout. O modelo sugere ordenação de habilidades e dúvidas; informações pessoais importantes continuam dependendo da sua resposta. Sem GPT, a preparação determinística continua.
-
-## Candidaturas automáticas
-
-O modo de navegador oferece suporte inicial aos formulários públicos **Lever em `jobs.lever.co`**, usando os dados do candidato e o currículo adaptado. Não exige chave da empresa. Requer Edge/Chrome disponível no Windows ou Chromium configurado em `CHROMIUM_PATH` no Linux. Ative o envio no assistente; a configuração usa `autoApply.mode: "browser"`.
-
-O conector preenche os campos suportados, pergunta dados obrigatórios desconhecidos e retoma após a resposta. Formulários incompatíveis, login ou CAPTCHA ficam pendentes para acompanhamento. Os limites padrão são uma tentativa por rodada e três por 24 horas. Um envio só ganha confirmação quando a plataforma apresenta a confirmação esperada; timeout ou resultado ambíguo não é repetido automaticamente.
-
-Greenhouse e Ashby são fontes de consulta. Os outros sites ainda precisam de um conector próprio para envio automático. O bot não oferece candidatura universal em qualquer plataforma. LinkedIn permanece por importação fornecida pelo usuário ou abertura manual.
-
-A integração **Lever API** anterior continua disponível com `autoApply.mode: "api"`. Essa modalidade exige API key da integração autorizada da empresa contratante; o login de candidato não fornece a chave. Só um recibo válido `applicationId` confirma o envio pela API.
-
-## Configuração e operação
-
-Os caminhos relativos são resolvidos em relação ao arquivo de configuração. Currículos, banco SQLite, perguntas, respostas e relatórios ficam em `dataDir`, fora do painel opcional e do Git. Apenas uma execução por diretório de dados pode ficar ativa.
-
-- `sources`: quadros públicos Greenhouse, Lever e Ashby; fontes ausentes da lista ficam pausadas, preservando histórico.
-- `search.continuous`: busca contínua ativada por padrão. A espera técnica por fonte respeita limites e erros; `preferences.intervalHours` continua disponível para o modo periódico antigo.
-- `workWindow`: início, duração e fuso. Configure 24 horas se desejar trabalho durante todo o dia; o padrão permanece 12 horas. Fora da janela, não inicia novo ciclo.
-- `preferences`: país, modalidades, senioridades, contratos, nomenclaturas e pontuação mínima.
-- `autoApply`: modalidade, ativação e limites de envio.
-- `whatsapp.transport`: `personal` para QR ou `cloud` para uma integração Meta existente.
-
-O computador e o processo precisam permanecer ligados. Não foi instalado agendamento nem serviço no seu computador. Faça backup de `data/` e da configuração com o bot encerrado.
-
-## WhatsApp Cloud opcional
-
-Operadores com integração Meta existente podem usar `--advanced-setup` e `whatsapp.transport: "cloud"`. O destino pode continuar sendo um número pessoal; o remetente precisa da conta/app Business, Phone Number ID, token válido, template aprovado e webhook HTTPS público terminado em `/webhook`.
-
-O template usa dois parâmetros no corpo: texto da pergunta e ID. Exemplo: `O Vaga Radar precisa de uma informação: {{1}}. Responda a esta mensagem ou envie {{2}}: sua resposta.` O receptor valida assinatura HMAC dos bytes originais, número remetente, Phone Number ID e IDs das mensagens. Também recebe eventos de entrega/leitura/falha e respostas citando a mensagem original.
-
-`VAGA_WHATSAPP_TOKEN` fornece o token de envio. `VAGA_META_APP_SECRET` e `VAGA_WHATSAPP_VERIFY_TOKEN` precisam ser valores locais reais para validar assinaturas/challenge; placeholders de proxy não servem como segredos locais. O assistente guarda esses valores no JSON privado quando informados. O receptor atende `127.0.0.1:3001` por padrão; HTTPS público exige infraestrutura externa. Não exponha o painel antigo para esse fim.
-
-```bash
-npm run bot -- --config bot.config.json --whatsapp-webhook
-```
+Operadores com uma integração Meta existente podem usar `--advanced-setup` e `whatsapp.transport: "cloud"`. Esse modo continua exigindo remetente Business, template aprovado, token e webhook HTTPS com validação de assinatura; não faz parte do fluxo pessoal por QR ou do SMS.
 
 ## Desenvolvimento e validação
 
@@ -104,10 +120,10 @@ npm test
 npm run test:ui
 ```
 
-`npm start` e o `.exe` sem argumentos permanecem em execução. `--once` executa uma rodada; `--collect-only` consulta sem enviar perguntas/candidaturas. Sem terminal e sem configuração, o bot grava um exemplo e retorna código 2. `--setup` exige terminal interativo.
+`npm start` e o `.exe` permanecem abertos. `--once` executa uma rodada; `--collect-only` consulta sem enviar perguntas/candidaturas e dispensa a etapa de conexão. Sem terminal e sem configuração, é gravado um exemplo e retornado código 2. `--setup` exige terminal interativo.
 
-O [workflow Windows](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40615734776) passou em Windows x64: instalação pelo lockfile, testes, geração SEA e execução do pacote extraído, incluindo dependências WhatsApp/navegador/PDF/SQLite. A suíte local final passou com 131 testes. Compilação local no Windows: `npm ci` e `npm run build:windows`. O pacote inclui `app/`; o executável não tem assinatura Authenticode do desenvolvedor.
+O [workflow Windows](https://github.com/emanuellMarinho/bot-linkedin/actions/workflows/windows-bot.yml) instala pelo lockfile, testa e gera o pacote SEA para Windows x64. Compilação local: `npm ci` e `npm run build:windows`. O pacote inclui `app/`; o executável não possui assinatura Authenticode do desenvolvedor.
 
-Testes de integração usam serviços simulados e formulários interceptados; não enviam candidaturas reais, mensagens reais ou chamadas pagas de GPT. A conexão com seu WhatsApp só pode ser comprovada após ler o QR no seu computador e responder ao teste. A janela de trabalho é testada com relógio controlado, sem afirmar doze horas de produção contínua. Evidências em [docs/BOT-VALIDATION.md](docs/BOT-VALIDATION.md).
+Resultados atuais são registrados em [docs/BOT-VALIDATION.md](docs/BOT-VALIDATION.md). Testes usam dados fictícios e serviços simulados; não comprovam entrega de SMS, pareamento de uma conta pessoal ou candidatura real em produção. Esses fluxos precisam ser confirmados com a conta configurada e resposta ao teste.
 
 O painel anterior é opcional: `npm run web`, restrito ao localhost. Documentação: [API](docs/API.md), [fontes](docs/SOURCES.md), [validação inicial](docs/VALIDATION.md). Licença: [MIT](../LICENSE).

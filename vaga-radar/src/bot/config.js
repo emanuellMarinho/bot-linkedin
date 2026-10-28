@@ -10,6 +10,18 @@ export const botConfigInput = z
     preferences: settingsInput.partial().default({}),
     sources: z.array(sourceInput).max(100).optional(),
     search: z.object({ continuous: z.boolean().default(true) }).strict().default({ continuous: true }),
+    notifications: z.object({
+      channel: z.enum(["whatsapp", "sms", "terminal"]),
+      requireConnection: z.boolean().default(true),
+    }).strict().optional(),
+    sms: z.object({
+      enabled: z.boolean().default(false),
+      accountSidEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).default("VAGA_TWILIO_ACCOUNT_SID"),
+      authTokenEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).default("VAGA_TWILIO_AUTH_TOKEN"),
+      from: z.string().default(""),
+      to: z.string().default(""),
+      pollIntervalSeconds: z.number().int().min(10).max(300).default(15),
+    }).strict().default({enabled: false, accountSidEnv: "VAGA_TWILIO_ACCOUNT_SID", authTokenEnv: "VAGA_TWILIO_AUTH_TOKEN", from: "", to: "", pollIntervalSeconds: 15}),
     setup: z
       .object({ completed: z.boolean(), version: z.literal(1) })
       .strict()
@@ -21,6 +33,8 @@ export const botConfigInput = z
         whatsappVerifyToken: z.string().max(8192).optional(),
         metaAppSecret: z.string().max(8192).optional(),
         leverApiKey: z.string().max(8192).optional(),
+        twilioAccountSid: z.string().max(8192).optional(),
+        twilioAuthToken: z.string().max(8192).optional(),
       })
       .strict()
       .optional(),
@@ -127,7 +141,14 @@ export const botConfigInput = z
         apiVersion: "v24.0",
       }),
   })
-  .strict();
+  .strict()
+  .transform((value) => ({
+    ...value,
+    notifications: value.notifications || {
+      channel: value.sms.enabled ? "sms" : value.whatsapp.enabled ? "whatsapp" : "terminal",
+      requireConnection: true,
+    },
+  }));
 
 export function readBotConfig(filename) {
   const stat = fs.statSync(filename);

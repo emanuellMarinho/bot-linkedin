@@ -381,3 +381,88 @@ test("currículo inválido não cria configuração utilizável ou altera arquiv
     "%PDF-arquivo-corrompido",
   );
 });
+
+test("assistente SMS salva provedor privado sem pedir QR ou avançar antes do currículo", async (t) => {
+  const { filename, resume } = workspace(t);
+  const sid = "AC" + "a".repeat(32);
+  const token = "TEST_NOT_A_REAL_TWILIO_TOKEN_abcdefghijklmnopqrstuvwxyz";
+  const prompt = scriptedPrompt({
+    ...firstRunAnswers(resume),
+    "notifications.channel": "2",
+    "sms.twilioAccountSid": sid,
+    "sms.twilioAuthToken": token,
+    "sms.from": "+1 (415) 555-0100",
+  }, { "ai.enabled": false, "autoApply.enabled": false });
+  const output = [];
+  await runSetup({ filename, prompt, output: (message) => output.push(message) });
+  const saved = readBotConfig(filename);
+  assert.equal(saved.notifications.channel, "sms");
+  assert.equal(saved.notifications.requireConnection, true);
+  assert.equal(saved.sms.enabled, true);
+  assert.equal(saved.sms.to, "+5511999990000");
+  assert.equal(saved.sms.from, "+14155550100");
+  assert.equal(saved.whatsapp.enabled, false);
+  assert.equal(saved.credentials.twilioAccountSid, sid);
+  assert.equal(saved.credentials.twilioAuthToken, token);
+  const env = {};
+  applyLocalCredentials(saved, env);
+  assert.equal(env.VAGA_TWILIO_ACCOUNT_SID, sid);
+  assert.equal(env.VAGA_TWILIO_AUTH_TOKEN, token);
+  const screen = output.join("\n");
+  assert.ok(!screen.includes(sid));
+  assert.ok(!screen.includes(token));
+  assert.match(screen, /pode cobrar/);
+  assert.match(screen, /ainda serão\s+testados/);
+  for (const id of ["sms.twilioAccountSid", "sms.twilioAuthToken"])
+    assert.equal(prompt.calls.find((call) => call.id === id).secret, true);
+  const indexOf = (id) => prompt.calls.findIndex((call) => call.id === id);
+  assert.ok(indexOf("applicant.resumePath") < indexOf("resume.confirm"));
+  assert.ok(indexOf("resume.confirm") < indexOf("notifications.channel"));
+  assert.ok(indexOf("notifications.channel") < indexOf("sms.twilioAccountSid"));
+  assert.ok(indexOf("sms.twilioAuthToken") < indexOf("setup.confirm"));
+  assert.deepEqual([...screen.matchAll(/ETAPA (\d)\/7/g)].map((match) => Number(match[1])), [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test("canal terminal dispensa número e credenciais de mensagens", async (t) => {
+  const { filename, resume } = workspace(t);
+  const prompt = scriptedPrompt({ ...firstRunAnswers(resume), "notifications.channel": "3" });
+  await runSetup({ filename, prompt, output() {} });
+  const saved = readBotConfig(filename);
+  assert.equal(saved.notifications.channel, "terminal");
+  assert.equal(saved.whatsapp.enabled, false);
+  assert.equal(saved.sms.enabled, false);
+  assert.ok(!prompt.calls.some((call) => call.id === "whatsapp.to" || call.id?.startsWith("sms.")));
+});
+
+test("cancelar a revisão final preserva JSON e não copia currículo parcial", async (t) => {
+  const { directory, filename, resume } = workspace(t);
+  const original = JSON.stringify({ dataDir: "./dados-preservados" }, null, 2);
+  fs.writeFileSync(filename, original);
+  const prompt = scriptedPrompt({ ...firstRunAnswers(resume), "notifications.channel": "3" }, { "setup.confirm": false });
+  await assert.rejects(runSetup({ filename, prompt, output() {} }), SetupCancelled);
+  assert.equal(fs.readFileSync(filename, "utf8"), original);
+  assert.equal(fs.existsSync(path.join(directory, "dados-preservados")), false);
+});
+
+test("pergunta seguinte aguarda validação assíncrona terminar", async () => {
+  const { input, output, chunks } = terminalStreams();
+  const prompt = createTerminalPrompt({ input, output });
+  let finishValidation;
+  const validation = new Promise((resolve) => { finishValidation = resolve; });
+  try {
+    const first = prompt.ask("Primeira informação", { validate: async () => { await validation; return true; } });
+    const second = prompt.ask("Segunda informação");
+    input.write("primeira\r");
+    await Promise.resolve();
+    assert.ok(!chunks.join("").includes("Segunda informação"));
+    finishValidation();
+    assert.equal(await first, "primeira");
+    assert.ok(chunks.join("").includes("Segunda informação"));
+    input.write("segunda\r");
+    assert.equal(await second, "segunda");
+  } finally {
+    prompt.close();
+    input.destroy();
+    output.destroy();
+  }
+});

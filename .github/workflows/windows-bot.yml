@@ -71,6 +71,30 @@ jobs:
           if ($report.collection.status -ne 'paused') { throw 'Standalone cycle did not respect pause' }
           $after = @(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue).Count
           if ($after -gt $before) { throw 'Headless bot unexpectedly started a web server' }
+          # A selected SMS channel must be ready before the executable collects.
+          # Unique, absent bindings prevent this smoke from using real services.
+          $smsConfig = Join-Path $PWD 'dist/smoke/VagaRadar/sms-blocked.json'
+          @{
+            sources = @()
+            preferences = @{ collectionEnabled = $false }
+            workWindow = @{ enabled = $false }
+            dataDir = 'sms-blocked-data'
+            notifications = @{ channel = 'sms'; requireConnection = $true }
+            sms = @{
+              enabled = $true
+              accountSidEnv = 'VAGA_CI_SYNTHETIC_SMS_SID_NOT_SET'
+              authTokenEnv = 'VAGA_CI_SYNTHETIC_SMS_TOKEN_NOT_SET'
+              from = '+15550000001'
+              to = '+15550000002'
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $smsConfig -Encoding utf8
+          $PSNativeCommandUseErrorActionPreference = $false
+          & ./dist/smoke/VagaRadar/VagaRadar.exe --config $smsConfig --once
+          $smsExit = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+          if ($smsExit -ne 2) { throw 'SMS without credentials must block before collection' }
+          $smsReport = Join-Path (Split-Path $smsConfig) 'sms-blocked-data/reports/latest.json'
+          if (Test-Path $smsReport) { throw 'Executable ran a collection cycle before SMS was ready' }
       - uses: actions/upload-artifact@v4
         with:
           name: VagaRadar-Windows-x64

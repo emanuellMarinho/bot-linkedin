@@ -185,9 +185,12 @@ export async function planResume(
     model = "gpt-4.1-mini",
     fetcher = fetch,
     timeoutMs = 20000,
+    signal,
   } = {},
 ) {
   if (!enabled) return { skillOrder: [], questions: [], provider: "disabled" };
+  if (signal?.aborted)
+    throw new ResumeAIError("AI_CANCELLED", "Análise cancelada antes de começar.");
   if (typeof apiKey !== "string" || !apiKey.trim())
     throw new ResumeAIError(
       "AI_MISSING_CREDENTIAL",
@@ -235,7 +238,9 @@ export async function planResume(
     response = await fetcher(endpoint, {
       method: "POST",
       redirect: "error",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
       headers: {
         Authorization: `Bearer ${apiKey.trim()}`,
         "Content-Type": "application/json",
@@ -244,6 +249,8 @@ export async function planResume(
       body: JSON.stringify(payload),
     });
   } catch {
+    if (signal?.aborted)
+      throw new ResumeAIError("AI_CANCELLED", "Análise cancelada. Nenhuma nova consulta foi iniciada.");
     throw new ResumeAIError(
       "AI_UNAVAILABLE",
       "Não foi possível concluir a análise de IA; nenhuma repetição automática foi feita.",

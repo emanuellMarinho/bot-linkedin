@@ -113,8 +113,10 @@ async function readJson(response) {
  */
 export async function submitLeverApplication(
   input,
-  { fetcher = fetch, timeoutMs = 20000, clock = Date.now } = {},
+  { fetcher = fetch, timeoutMs = 20000, clock = Date.now, signal } = {},
 ) {
+  if (signal?.aborted)
+    throw new SubmissionError("CANCELLED", "Candidatura cancelada antes do envio.");
   if (typeof input?.apiKey !== "string" || !input.apiKey.trim())
     throw new SubmissionError(
       "MISSING_CREDENTIAL",
@@ -166,7 +168,9 @@ export async function submitLeverApplication(
       },
       body,
       redirect: "error",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
   } catch {
     // A timeout/network failure can happen after the platform accepted the POST.
