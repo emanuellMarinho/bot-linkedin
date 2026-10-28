@@ -130,7 +130,7 @@ npm ci
 npm run build:windows
 ```
 
-[Baixe o pacote validado no Windows](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40607731691), na seção **Artifacts → VagaRadar-Windows-x64** (é necessário estar conectado ao GitHub). O build e o teste do executável extraído passaram.
+[Baixe o pacote validado no Windows](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40611122506), na seção **Artifacts → VagaRadar-Windows-x64** (é necessário estar conectado ao GitHub). O build e o teste do executável extraído passaram.
 
 Artefato: `dist/VagaRadar-Windows-x64.zip`. É um pacote portátil com **`VagaRadar.exe` e pasta `app/`**, não um único arquivo autossuficiente. Extraia tudo. Não apague a pasta `app`. O executável gerado não possui assinatura Authenticode própria.
 

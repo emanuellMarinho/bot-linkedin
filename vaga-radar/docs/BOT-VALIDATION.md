@@ -39,3 +39,6 @@ O usuário recusou QR code e cadastro Business no assistente. O fluxo básico fo
 - `npm test`: **79 passaram**, incluindo número pessoal sem prompts Business/QR, carregamento privado de chave GPT e respostas locais validadas sem parar a busca.
 - PTY Linux real repetido no fluxo básico: nenhuma pergunta Business/QR, chave sem eco, JSON salvo, execução contínua e Ctrl+C com saída 0. Sem chamadas externas.
 - As respostas pelo terminal são persistidas com origem `terminal:` e o bot as consome na próxima verificação, como ocorre com respostas autenticadas vindas do canal externo.
+
+
+Validação final Windows do fluxo simplificado: **sucesso em 3m59s** no [run 40611122506](https://github.com/emanuellMarinho/bot-linkedin/actions/runs/40611122506), commit `dd4356b`. Instalação, testes Windows, geração SEA e smoke do executável extraído passaram; artefato `VagaRadar-Windows-x64`, 74,4 MB. Em PTY Linux real, a dúvida de e-mail foi exibida, uma resposta inválida rejeitada e a resposta válida persistida enquanto o bot continuava aberto; Ctrl+C encerrou com código0. Nenhuma mensagem externa foi enviada.
