@@ -15,6 +15,7 @@ export async function main(args = process.argv.slice(2)) {
         watch: { type: "boolean" },
         "collect-only": { type: "boolean" },
         "whatsapp-webhook": { type: "boolean" },
+        setup: { type: "boolean" },
       },
     }));
   } catch {
@@ -23,7 +24,7 @@ export async function main(args = process.argv.slice(2)) {
   }
   if (values.help) {
     console.log(
-      "Vaga Radar Bot — sem painel e sem servidor HTTP\nUso: VagaRadar.exe [--config arquivo.json] [--once | --watch] [--collect-only] [--whatsapp-webhook]\nNo Node: npm run bot -- --config bot.config.json --once\nO bot lê seu perfil local, consulta fontes e prepara candidaturas.\nEnvio via Lever exige autorização da integração da empresa e API key; login de candidato não substitui essa autorização.\nNunca envia pelo LinkedIn nem marca sucesso sem recibo verificável.",
+      "Vaga Radar Bot — assistente no terminal\nUso: VagaRadar.exe [--setup] [--config arquivo.json] [--once | --watch] [--collect-only] [--whatsapp-webhook]\nAo abrir o .exe pela primeira vez, informe os dados no assistente. O JSON é salvo automaticamente e o terminal continua aberto executando o bot.\n--setup altera seus dados e chaves sem editar arquivos. Ctrl+C encerra.\nNo Node: npm start ou npm run bot -- --setup\nEnvio via Lever exige autorização da integração da empresa; não é login de candidato. Nunca envia pelo LinkedIn nem registra sucesso sem recibo verificável.",
     );
     return 0;
   }
@@ -35,6 +36,47 @@ export async function main(args = process.argv.slice(2)) {
   const filename = path.resolve(
     values.config || path.join(base, "bot.config.json"),
   );
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  let setupNeeded = values.setup || !fs.existsSync(filename);
+  if (
+    interactive &&
+    !values.once &&
+    !values["whatsapp-webhook"] &&
+    fs.existsSync(filename)
+  ) {
+    try {
+      const raw = JSON.parse(
+        fs.readFileSync(filename, "utf8").replace(/^\uFEFF/, ""),
+      );
+      if (!raw.setup?.completed && !raw.applicant?.resumePath)
+        setupNeeded = true;
+    } catch {
+      /* O erro de arquivo será apresentado na validação. */
+    }
+  }
+  if (values.setup && !interactive) {
+    console.error(
+      "O assistente precisa de um terminal interativo. Abra o .exe ou execute --setup no seu terminal.",
+    );
+    return 2;
+  }
+  if (setupNeeded && interactive) {
+    const { createTerminalPrompt } = await import("./terminal/prompts.js");
+    const { runSetup } = await import("./bot/setup.js");
+    const prompt = createTerminalPrompt();
+    try {
+      await runSetup({ filename, prompt });
+    } catch (error) {
+      console.error(
+        error.code === "SETUP_CANCELLED"
+          ? "Configuração cancelada. Arquivos anteriores preservados."
+          : "Não foi possível salvar a configuração. Confira os dados e as permissões da pasta.",
+      );
+      return error.code === "SETUP_CANCELLED" ? 130 : 2;
+    } finally {
+      prompt.close();
+    }
+  }
   if (!fs.existsSync(filename)) {
     const template = fileURLToPath(
       new URL("../bot.example.json", import.meta.url),
@@ -49,6 +91,7 @@ export async function main(args = process.argv.slice(2)) {
     );
     return 2;
   }
+  if (!values.once && !values["whatsapp-webhook"]) values.watch = true;
   const [
     { readBotConfig, applyBotConfig },
     { acquireBotLock },
@@ -57,6 +100,7 @@ export async function main(args = process.argv.slice(2)) {
     { createCollector },
     { runBotCycle, recoverInterruptedSubmissions },
     dotenv,
+    { applyLocalCredentials },
   ] = await Promise.all([
     import("./bot/config.js"),
     import("./bot/lock.js"),
@@ -65,6 +109,7 @@ export async function main(args = process.argv.slice(2)) {
     import("./services/collector.js"),
     import("./bot/worker.js"),
     import("dotenv"),
+    import("./bot/credentials.js"),
   ]);
   dotenv.config({
     path: path.join(path.dirname(filename), ".env"),
@@ -74,6 +119,7 @@ export async function main(args = process.argv.slice(2)) {
     try {
       const { startWhatsAppServer } = await import("./whatsapp-server.js");
       const config = readBotConfig(filename);
+      applyLocalCredentials(config);
       await startWhatsAppServer({ dataDir: config.dataDir });
       return 0;
     } catch {
@@ -91,6 +137,7 @@ export async function main(args = process.argv.slice(2)) {
     stopping = false,
     timer,
     wake;
+  let webhook;
   const stop = () => {
     stopping = true;
     controller.abort();
@@ -102,6 +149,7 @@ export async function main(args = process.argv.slice(2)) {
   process.on("SIGTERM", stop);
   try {
     let config = readBotConfig(filename);
+    applyLocalCredentials(config);
     release = acquireBotLock(config.dataDir);
     db = openDatabase(path.join(config.dataDir, "radar.sqlite"));
     recoverInterruptedSubmissions(db);
@@ -112,6 +160,21 @@ export async function main(args = process.argv.slice(2)) {
         },
       };
     collector = createCollector(store, { logger, autoScheduleEnabled: false });
+    if (config.whatsapp.enabled && config.whatsapp.autoStartWebhook) {
+      const { startWhatsAppServer } = await import("./whatsapp-server.js");
+      webhook = await startWhatsAppServer({ dataDir: config.dataDir });
+    }
+    if (interactive) {
+      console.log(
+        "\nVaga Radar em execução. Mantenha esta janela aberta. Ctrl+C encerra com segurança.",
+      );
+      console.log(
+        `Rotina: ${config.workWindow.startHour}h, ${config.workWindow.hours} horas/dia (${config.workWindow.timeZone}).`,
+      );
+      console.log(
+        `GPT: ${config.ai.enabled ? "configurado" : "desativado"} | WhatsApp: ${config.whatsapp.enabled ? "configurado; depende de webhook/template Meta" : "desativado"}`,
+      );
+    }
     let lastRun = 0,
       lastConfig = 0,
       lastAnswers = 0,
@@ -121,6 +184,7 @@ export async function main(args = process.argv.slice(2)) {
       if (current.dataDir !== config.dataDir)
         throw new Error("Encerre o bot antes de alterar dataDir");
       config = current;
+      applyLocalCredentials(config);
       const modified = fs.statSync(filename).mtimeMs;
       if (modified !== lastConfig) {
         applyBotConfig(store, config);
@@ -135,12 +199,14 @@ export async function main(args = process.argv.slice(2)) {
       lastAnswers = answerCount;
       if (!within && !outsideReported) {
         console.log(
-          JSON.stringify({
-            state: "outside_work_window",
-            startHour: config.workWindow.startHour,
-            hours: config.workWindow.hours,
-            timeZone: config.workWindow.timeZone,
-          }),
+          interactive
+            ? `Fora do horário de trabalho. Aguardando ${config.workWindow.startHour}h (${config.workWindow.timeZone}). A janela deve continuar aberta.`
+            : JSON.stringify({
+                state: "outside_work_window",
+                startHour: config.workWindow.startHour,
+                hours: config.workWindow.hours,
+                timeZone: config.workWindow.timeZone,
+              }),
         );
         outsideReported = true;
       }
@@ -159,13 +225,15 @@ export async function main(args = process.argv.slice(2)) {
         });
         if (!answered || !lastRun) lastRun = Date.now();
         console.log(
-          JSON.stringify({
-            collection: result.collection.status,
-            received: result.collection.received,
-            prepared: result.prepared,
-            submitted: result.submitted,
-            pending: result.pending.length,
-          }),
+          interactive
+            ? `Ciclo concluído: ${result.collection.received} recebidas, ${result.prepared} preparadas, ${result.submitted} enviadas, ${result.pending.length} pendências. Próxima busca em até ${prefs.intervalHours}h. Ctrl+C para encerrar.`
+            : JSON.stringify({
+                collection: result.collection.status,
+                received: result.collection.received,
+                prepared: result.prepared,
+                submitted: result.submitted,
+                pending: result.pending.length,
+              }),
         );
         if (!values.watch)
           return ["partial", "failed"].includes(result.collection.status)
@@ -195,14 +263,40 @@ export async function main(args = process.argv.slice(2)) {
     return 2;
   } finally {
     collector?.stop();
+    if (webhook) await webhook.close();
     db?.close();
     release?.();
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
   }
 }
+
+export async function runCLI(args = process.argv.slice(2)) {
+  const code = await main(args);
+  if (
+    code !== 0 &&
+    code !== 130 &&
+    process.stdin.isTTY &&
+    process.stdout.isTTY &&
+    !args.includes("--help") &&
+    !args.includes("-h") &&
+    !args.includes("--once")
+  ) {
+    const { createInterface } = await import("node:readline/promises");
+    const terminal = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    try {
+      await terminal.question("Pressione Enter para fechar esta janela...");
+    } finally {
+      terminal.close();
+    }
+  }
+  return code;
+}
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
-  process.exitCode = await main();
+  process.exitCode = await runCLI();

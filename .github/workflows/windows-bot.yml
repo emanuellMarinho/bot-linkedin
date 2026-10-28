@@ -46,6 +46,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows executable help failed' }
           if (($helpText -join "`n") -notmatch 'Vaga Radar|VagaRadar|vaga-radar') { throw 'Windows executable help did not run the bot' }
           $helpText | Write-Output
+          # CI has no interactive terminal. A missing configuration must create
+          # its example and return instead of waiting forever for wizard input.
+          $initialConfig = Join-Path $PWD 'dist/smoke/VagaRadar/first-run.json'
+          $previousNativePreference = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          & ./dist/smoke/VagaRadar/VagaRadar.exe --config $initialConfig --once --collect-only
+          $initialExit = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+          if ($initialExit -ne 2) { throw 'Noninteractive first launch should request configuration' }
+          if (-not (Test-Path $initialConfig)) { throw 'First launch did not create configuration' }
+          $initial = Get-Content -Raw $initialConfig | ConvertFrom-Json
+          if ($initial.autoApply.enabled) { throw 'First launch enabled submissions without user setup' }
           $configFile = Join-Path $PWD 'dist/smoke/VagaRadar/smoke.json'
           @{ sources = @(); preferences = @{ collectionEnabled = $false }; workWindow = @{ enabled = $false }; dataDir = 'smoke-data' } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configFile -Encoding utf8
           $before = @(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue).Count

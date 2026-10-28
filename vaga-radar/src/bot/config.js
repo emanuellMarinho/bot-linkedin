@@ -9,6 +9,20 @@ export const botConfigInput = z
     profile: profileInput.partial().optional(),
     preferences: settingsInput.partial().default({}),
     sources: z.array(sourceInput).max(100).optional(),
+    setup: z
+      .object({ completed: z.boolean(), version: z.literal(1) })
+      .strict()
+      .optional(),
+    credentials: z
+      .object({
+        openaiApiKey: z.string().max(8192).optional(),
+        whatsappAccessToken: z.string().max(8192).optional(),
+        whatsappVerifyToken: z.string().max(8192).optional(),
+        metaAppSecret: z.string().max(8192).optional(),
+        leverApiKey: z.string().max(8192).optional(),
+      })
+      .strict()
+      .optional(),
     applicant: z
       .object({
         email: z.union([z.email(), z.literal("")]).default(""),
@@ -94,6 +108,8 @@ export const botConfigInput = z
           .string()
           .regex(/^v\d{1,2}\.\d$/)
           .default("v24.0"),
+        webhookUrl: z.string().default(""),
+        autoStartWebhook: z.boolean().default(false),
       })
       .strict()
       .default({

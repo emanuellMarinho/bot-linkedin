@@ -8,16 +8,27 @@ Bot sem dashboard obrigatório: lê um currículo local, procura vagas em fontes
 
 Requer Node.js 24 LTS. Linux e Windows são os alvos; Windows usa o pacote portátil ou Node instalado.
 
+Abra **VagaRadar.exe**. No primeiro uso, o terminal pergunta nome, e-mail, currículo, habilidades, número pessoal do WhatsApp, horários e integrações opcionais. As respostas são salvas automaticamente em `bot.config.json`, o currículo é copiado para a pasta privada e a rotina começa na mesma janela. Mantenha o terminal aberto; **Ctrl+C** encerra.
+
+Para alterar os dados posteriormente:
+
+```powershell
+.\VagaRadar.exe --setup
+```
+
+Pressionar Enter mantém o valor anterior. As chaves ficam ocultas durante a digitação e nunca são mostradas como valores padrão. Ctrl+C durante o assistente cancela sem substituir a configuração anterior. A configuração é validada e salva de uma vez, sem JSON parcial.
+
+No desenvolvimento com Node:
+
 ```bash
 cd vaga-radar
 npm ci
-cp bot.example.json bot.config.json
-# Edite bot.config.json e indique seu currículo em applicant.resumePath.
-npm run bot -- --config bot.config.json --once
 npm start
+# Reconfigurar sem editar arquivos:
+npm run bot -- --setup
 ```
 
-No Windows, copie o arquivo pelo Explorer ou use `Copy-Item bot.example.json bot.config.json`. `npm start` executa o bot continuamente, sem escutar porta HTTP. `npm run bot -- --help` mostra as opções. O bot sem configuração cria um arquivo de exemplo e encerra com código 2, sem envios. Configuração inválida também encerra com código 2; falha de coleta em ciclo único retorna 1; sucesso ou espera fora do horário retorna 0.
+`npm start` e o `.exe` sem argumentos permanecem em execução; não é preciso pedir `--watch`. `--once` executa apenas um ciclo. Em automação sem terminal, a ausência de configuração ainda cria um exemplo e retorna código 2, sem solicitar entradas ou enviar mensagens. `--setup` exige terminal interativo. Integrações externas continuam dependendo das permissões e credenciais da plataforma.
 
 Campos principais:
 
@@ -29,7 +40,7 @@ Campos principais:
 - `autoApply`: desativado inicialmente, limites por ciclo e por 24h, e integrações explicitamente autorizadas.
 - `ai` e `whatsapp`: opções detalhadas abaixo.
 
-Os caminhos relativos são resolvidos em relação ao arquivo de configuração. Banco, perguntas, respostas, currículos e relatórios ficam em `dataDir`, fora de `public/` e do Git. Credenciais ficam em variáveis de ambiente ou no `.env` **local**, ao lado do arquivo de configuração; nunca dentro do currículo, configuração versionada ou WhatsApp.
+Os caminhos relativos são resolvidos em relação ao arquivo de configuração. Banco, perguntas, respostas, currículos e relatórios ficam em `dataDir`, fora de `public/` e do Git. As chaves digitadas no assistente ficam no campo `credentials` do **JSON local privado** (sem criptografia), ignorado pelo Git, com permissões restritas no Linux. Não compartilhe esse arquivo. Variáveis de ambiente e `.env` local continuam suportados; o assistente reutiliza credenciais existentes sem mostrá-las. Valores digitados explicitamente no JSON têm precedência no processo. Nenhuma chave é incluída no ZIP distribuído, no currículo ou em mensagens do WhatsApp.
 
 ## Currículo e adaptação ATS
 
@@ -47,13 +58,15 @@ Essa adaptação melhora a apresentação para leitura automática; **não garan
 }
 ```
 
-Defina a chave verdadeira em `VAGA_OPENAI_KEY` no ambiente local. Ativar essa opção autoriza transmitir **texto do currículo, vaga e habilidades confirmadas** à API OpenAI; há cobrança conforme sua conta. O bot usa Responses API com `store:false`, limites de saída e timeout. Não existe chave embutida nem chamada paga durante os testes.
+Informe a chave no assistente do terminal ou defina `VAGA_OPENAI_KEY` no ambiente local. Ativar essa opção autoriza transmitir **texto do currículo, vaga e habilidades confirmadas** à API OpenAI; há cobrança conforme sua conta. O bot usa Responses API com `store:false`, limites de saída e timeout. Não existe chave embutida nem chamada paga durante os testes.
 
 O modelo propõe ordenação de habilidades já existentes e perguntas sobre dados ausentes. Não recebe autorização para inventar experiência ou responder fatos pessoais pelo candidato. Descrição da vaga é tratada como conteúdo não confiável. Planos válidos são armazenados por currículo/vaga/modelo para não repetir chamadas idênticas. Se a IA estiver desativada ou indisponível, a preparação determinística continua e a limitação aparece no relatório.
 
 ## Perguntas e respostas por WhatsApp
 
-É uma integração com a **WhatsApp Business Platform Cloud API oficial**. Não usa automação de WhatsApp pessoal ou WhatsApp Web. Requer conta/app Meta, número Business configurado, token válido, número do candidato e um **template aprovado**. Tarifas/regras dependem da conta Meta. Os testes locais não habilitam o canal real.
+Seu **número pessoal pode receber** as perguntas e não precisa ser convertido em Business. O remetente do bot, por sua vez, precisa de uma conexão autenticada com o WhatsApp. A integração implementada nesta versão usa a **WhatsApp Business Platform Cloud API oficial**. Não usa automação de WhatsApp pessoal ou WhatsApp Web. Requer conta/app Meta, número Business configurado, token válido, número do candidato e um **template aprovado**. Tarifas/regras dependem da conta Meta. Os testes locais não habilitam o canal real. Cadastro/aprovação de app, template e disponibilidade de HTTPS são etapas da Meta/hospedagem que o executável não pode aprovar por conta própria.
+
+O assistente pergunta seu número pessoal separadamente. Você pode terminar a configuração sem API Business; nesse caso as perguntas ficam pendentes localmente e o WhatsApp não é anunciado como conectado. Informar somente um número não autentica um remetente.
 
 1. Cadastre um template, por exemplo `vaga_radar_duvida`, em `pt_BR`, com exatamente dois parâmetros no corpo: texto da pergunta e ID da pergunta. Exemplo de corpo a submeter à aprovação da Meta:
 
@@ -61,8 +74,8 @@ O modelo propõe ordenação de habilidades já existentes e perguntas sobre dad
 
 2. No arquivo `bot.config.json`, ative `whatsapp.enabled`, informe `phoneNumberId`, `to` (número autorizado com país/DDD, só dígitos), `templateName` e `language`. `apiVersion` é editável e precisa ser suportada pela sua app Meta.
 3. Defina `VAGA_WHATSAPP_TOKEN` no ambiente do bot. O token não é enviado como texto ao candidato.
-4. Para receber respostas, configure um webhook público **HTTPS** terminado em `/webhook`. O projeto entrega o receptor, mas não cria hospedagem ou túnel automaticamente. Esse receptor usa banco persistente compartilhado com o bot e pode ser executado no mesmo host.
-5. Defina **valores locais reais**, não placeholders de proxy, para `VAGA_META_APP_SECRET` (verificar assinatura HMAC), `VAGA_WHATSAPP_VERIFY_TOKEN` (verificar o webhook) e `VAGA_WHATSAPP_TO` (remetente autorizado). São segredos locais de validação; não devem ser colados em chat ou commit.
+4. Para receber respostas, informe ao assistente um webhook público **HTTPS** terminado em `/webhook`. Com o canal configurado, o receptor local inicia junto do bot, sem comando separado. O projeto entrega o receptor, mas não cria hospedagem ou túnel automaticamente. Esse receptor usa banco persistente compartilhado com o bot e pode ser executado no mesmo host.
+5. O assistente gera um verify token automaticamente para uma configuração nova e guarda-o no JSON privado. Para configurações manuais, defina **valores locais reais**, não placeholders de proxy, para `VAGA_META_APP_SECRET` (verificar assinatura HMAC), `VAGA_WHATSAPP_VERIFY_TOKEN` (verificar o webhook) e `VAGA_WHATSAPP_TO` (remetente autorizado). São segredos locais de validação; não devem ser colados em chat ou commit.
 
 ```bash
 npm run bot -- --config bot.config.json --whatsapp-webhook
